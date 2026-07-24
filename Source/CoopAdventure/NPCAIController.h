@@ -36,6 +36,8 @@ public:
 protected:
 	void MoveToRandomLocation();
 
+	void ResumeWandering();
+
 	
 	virtual void OnMoveCompleted(FAIRequestID RequestID,const FPathFollowingResult& Result) override;
 

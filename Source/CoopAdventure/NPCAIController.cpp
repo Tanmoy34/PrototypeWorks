@@ -72,40 +72,95 @@ void ANPCAIController::Tick(float DeltaTime)
 
 void ANPCAIController::MoveToRandomLocation()
 {
-	APawn* MyPawn = GetPawn();
+	if (!HasAuthority())
+		return;
 
-	if (!MyPawn)return;
+	ANPCCharacter* NPC = Cast<ANPCCharacter>(GetPawn());
 
-	ANPCCharacter* NPC = Cast<ANPCCharacter>(MyPawn);
+	if (!NPC)
+		return;
 
-	if (!NPC)return;
+	// Don't wander unless we're actually in the Wandering state.
+	if (NPC->GetState() != ENPCState::Wandering)
+		return;
 
-	UNavigationSystemV1* NavSys =FNavigationSystem::GetCurrent<UNavigationSystemV1>(GetWorld());
+	UNavigationSystemV1* NavSys =
+		FNavigationSystem::GetCurrent<UNavigationSystemV1>(GetWorld());
 
-	if (!NavSys)return;
+	if (!NavSys)
+		return;
 
 	FNavLocation RandomPoint;
 
-	bool bFound =
-		NavSys->GetRandomReachablePointInRadius(MyPawn->GetActorLocation(),NPC->WanderRadius,RandomPoint);
-
-	if (bFound)
+	if (NavSys->GetRandomReachablePointInRadius(
+			NPC->GetActorLocation(),
+			NPC->WanderRadius,
+			RandomPoint))
 	{
 		MoveToLocation(RandomPoint.Location);
 	}
 }
 
+void ANPCAIController::ResumeWandering()
+{
+	ANPCCharacter* NPC = Cast<ANPCCharacter>(GetPawn());
+
+	if (!NPC)
+		return;
+
+	if (NPC->GetState() != ENPCState::Waiting)
+		return;
+
+	NPC->SetState(ENPCState::Wandering);
+
+	MoveToRandomLocation();
+}
+
 void ANPCAIController::OnMoveCompleted(FAIRequestID RequestID, const FPathFollowingResult& Result)
 {
 	Super::OnMoveCompleted(RequestID, Result);
-	if (!HasAuthority())return;
+	if (!HasAuthority())
+		return;
 
-	ANPCCharacter* NPC =Cast<ANPCCharacter>(GetPawn());
+	ANPCCharacter* NPC = Cast<ANPCCharacter>(GetPawn());
 
-	if (!NPC)return;
+	if (!NPC)
+		return;
 
-	float Wait =FMath::FRandRange(NPC->MinWaitTime,NPC->MaxWaitTime);
+	switch (NPC->GetState())
+	{
+	case ENPCState::Wandering:
+		{
+			NPC->SetState(ENPCState::Waiting);
 
-	GetWorld()->GetTimerManager().SetTimer(WanderTimer,this,&ANPCAIController::MoveToRandomLocation,Wait,false);
+			float WaitTime = FMath::FRandRange(
+				NPC->MinWaitTime,
+				NPC->MaxWaitTime);
+
+			GetWorld()->GetTimerManager().SetTimer(
+				WanderTimer,
+				this,
+				&ANPCAIController::ResumeWandering,
+				WaitTime,
+				false);
+
+			break;
+		}
+
+	case ENPCState::MoveAside:
+		{
+			// We'll implement this later.
+			break;
+		}
+
+	case ENPCState::Returning:
+		{
+			// We'll implement this later.
+			break;
+		}
+
+	default:
+		break;
+	}
 }
 

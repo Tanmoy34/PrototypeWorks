@@ -23,6 +23,13 @@ public class CoopAdventure : ModuleRules
 			"NavigationSystem",
 			"OnlineSubsystemSteam"
 		});
+		
+		PublicAdditionalLibraries.AddRange(new string[] 
+		{
+			"sapi.lib",
+			"ole32.lib",
+			"oleaut32.lib"
+		});
 
 		PrivateDependencyModuleNames.AddRange(new string[] { });
 
