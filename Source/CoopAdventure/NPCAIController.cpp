@@ -57,7 +57,7 @@ void ANPCAIController::Tick(float DeltaTime)
 		{
 			StopMovement();
 
-			MoveToRandomLocation();
+			HandleStuck();
 
 			StuckTimer = 0.f;
 		}
@@ -116,6 +116,80 @@ void ANPCAIController::ResumeWandering()
 	MoveToRandomLocation();
 }
 
+void ANPCAIController::MoveAsideFrom(const FVector& ThreatLocation)
+{
+	if (!HasAuthority())
+		return;
+
+	ANPCCharacter* NPC = Cast<ANPCCharacter>(GetPawn());
+
+	if (!NPC)
+		return;
+
+	// Already clearing a path or drifting back — don't interrupt with a
+	// second command.
+	if (NPC->GetState() == ENPCState::MoveAside || NPC->GetState() == ENPCState::Returning)
+		return;
+
+	// A pending "resume wandering after waiting" timer no longer applies.
+	GetWorld()->GetTimerManager().ClearTimer(WanderTimer);
+
+	// Remember where we were so we can drift back once the path is clear.
+	PreCommandLocation = NPC->GetActorLocation();
+
+	FVector AwayDirection = (PreCommandLocation - ThreatLocation).GetSafeNormal();
+
+	if (AwayDirection.IsNearlyZero())
+	{
+		AwayDirection = NPC->GetActorForwardVector();
+	}
+
+	FVector DesiredPoint = PreCommandLocation + AwayDirection * NPC->MoveAsideDistance;
+
+	UNavigationSystemV1* NavSys =
+		FNavigationSystem::GetCurrent<UNavigationSystemV1>(GetWorld());
+
+	if (!NavSys)
+		return;
+
+	FNavLocation NavPoint;
+	bool bFoundPoint = NavSys->ProjectPointToNavigation(
+		DesiredPoint,
+		NavPoint,
+		FVector(NPC->MoveAsideDistance * 0.5f, NPC->MoveAsideDistance * 0.5f, NPC->MoveAsideDistance));
+
+	if (!bFoundPoint)
+	{
+		// Couldn't find nav on that exact spot — settle for any reachable
+		// point roughly in that direction instead.
+		bFoundPoint = NavSys->GetRandomReachablePointInRadius(
+			DesiredPoint,
+			NPC->MoveAsideDistance * 0.5f,
+			NavPoint);
+	}
+
+	if (!bFoundPoint)
+		return;
+
+	NPC->SetState(ENPCState::MoveAside);
+	StopMovement();
+	MoveToLocation(NavPoint.Location);
+}
+
+void ANPCAIController::HandleStuck()
+{
+	ANPCCharacter* NPC = Cast<ANPCCharacter>(GetPawn());
+
+	if (!NPC)
+		return;
+
+	// Whatever we were doing, falling back to wandering is always safe and
+	// keeps the NPC from freezing in place indefinitely.
+	GetWorld()->GetTimerManager().ClearTimer(WanderTimer);
+	NPC->SetState(ENPCState::Wandering);
+	MoveToRandomLocation();
+}
+
 void ANPCAIController::OnMoveCompleted(FAIRequestID RequestID, const FPathFollowingResult& Result)
 {
 	Super::OnMoveCompleted(RequestID, Result);
@@ -149,13 +223,21 @@ void ANPCAIController::OnMoveCompleted(FAIRequestID RequestID, const FPathFollow
 
 	case ENPCState::MoveAside:
 		{
-			// We'll implement this later.
+			// Path is clear. Drift back toward where we were standing
+			// before the command interrupted us.
+			NPC->SetState(ENPCState::Returning);
+			MoveToLocation(PreCommandLocation);
+
 			break;
 		}
 
 	case ENPCState::Returning:
 		{
-			// We'll implement this later.
+			// Back home (or as close as the navmesh allows) — resume
+			// normal wandering behaviour.
+			NPC->SetState(ENPCState::Wandering);
+			MoveToRandomLocation();
+
 			break;
 		}
 
@@ -163,4 +245,3 @@ void ANPCAIController::OnMoveCompleted(FAIRequestID RequestID, const FPathFollow
 		break;
 	}
 }
-

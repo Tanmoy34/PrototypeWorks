@@ -23,6 +23,11 @@ public:
 	// Called every frame
 	virtual void Tick(float DeltaTime) override;
 
+	// Called (server-side) when a supported voice command lands within
+	// listen range of this NPC. Interrupts wandering/waiting to clear
+	// the path, then drifts back once done.
+	void MoveAsideFrom(const FVector& ThreatLocation);
+
 	FVector LastLocation;
 
 	float StuckTimer = 0.f;
@@ -38,11 +43,18 @@ protected:
 
 	void ResumeWandering();
 
-	
+	// Recovery when the pawn hasn't moved for MaxStuckTime, regardless of
+	// which state it was stuck in.
+	void HandleStuck();
+
 	virtual void OnMoveCompleted(FAIRequestID RequestID,const FPathFollowingResult& Result) override;
 
 private:
 
 	FTimerHandle WanderTimer;
+
+	// Where the NPC was standing right before it moved aside for a command,
+	// so it can drift back afterwards instead of teleporting or staying put.
+	FVector PreCommandLocation = FVector::ZeroVector;
 
 };

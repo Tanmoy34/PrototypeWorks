@@ -2,6 +2,7 @@
 
 
 #include "NPCCharacter.h"
+#include "NPCAIController.h"
 
 #include "Net/UnrealNetwork.h" 
 
@@ -50,9 +51,27 @@ void ANPCCharacter::SetState(ENPCState NewState)
 	OnRep_CurrentState();
 }
 
+void ANPCCharacter::HandleVoiceCommand(const FString& Command, const FVector& SourceLocation)
+{
+	// This is gameplay logic that changes movement/state, so it must only
+	// ever run with authority (the Host/Server), same as everything else
+	// driving this NPC.
+	if (!HasAuthority())
+		return;
+
+	if (FVector::Dist(GetActorLocation(), SourceLocation) > ListenRadius)
+		return;
+
+	ANPCAIController* AICon = Cast<ANPCAIController>(GetController());
+
+	if (!AICon)
+		return;
+
+	AICon->MoveAsideFrom(SourceLocation);
+}
+
 // Called to bind functionality to input
 void ANPCCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputComponent)
 {
 	Super::SetupPlayerInputComponent(PlayerInputComponent);
 }
-
