@@ -22,6 +22,7 @@ struct VoskRecognizer;
 typedef VoskModel* (*PFN_vosk_model_new)(const char* model_path);
 typedef void (*PFN_vosk_model_free)(VoskModel* model);
 typedef VoskRecognizer* (*PFN_vosk_recognizer_new_grm)(VoskModel* model, float sample_rate, const char* grammar);
+typedef VoskRecognizer* (*PFN_vosk_recognizer_new)(VoskModel* model, float sample_rate);
 typedef void (*PFN_vosk_recognizer_free)(VoskRecognizer* recognizer);
 typedef int (*PFN_vosk_recognizer_accept_waveform_s)(VoskRecognizer* recognizer, const int16* data, int length);
 typedef const char* (*PFN_vosk_recognizer_result)(VoskRecognizer* recognizer);
@@ -76,17 +77,29 @@ public:
 	class USoundBase* ListenStopSound = nullptr;
 
 	// Which input device to record from. -1 (default) uses whatever
-	// Windows currently has set as the default recording device. If your
-	// default mic doesn't work and you can't change it in Windows Sound
-	// settings, use "Log Available Input Devices" below to find the index
-	// of the mic you actually want, then set it here instead.
+	// Windows currently has set as the default recording device.
+	//
+	// PREFER PreferredInputDeviceNameContains below instead - device
+	// *index* order isn't guaranteed to match what LogAvailableInputDevices
+	// printed once you actually open a real capture stream (that bit you
+	// once already), whereas matching by name is unambiguous and doesn't
+	// depend on enumeration order at all. Only used as a fallback if
+	// PreferredInputDeviceNameContains is empty.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Voice Command")
 	int32 PreferredInputDeviceIndex = -1;
 
+	// Preferred, robust way to pick a mic: a substring of its name, e.g.
+	// "WO Mic" or "DroidCam". Case-insensitive. Re-resolved fresh every
+	// time you press V by scanning the live device list, so it can't go
+	// stale the way a hardcoded index can. Leave empty to fall back to
+	// PreferredInputDeviceIndex (or OS default if that's also -1).
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Voice Command")
+	FString PreferredInputDeviceNameContains;
+
 	// Click this in the Details panel (works even outside Play) to print
 	// every input device Windows can see, with its index, to the Output
-	// Log - e.g. "[0] Microphone Array (Realtek)". Use the index that
-	// corresponds to the mic you want in PreferredInputDeviceIndex above.
+	// Log - e.g. "[0] Microphone Array (Realtek)". Mainly useful now to
+	// confirm PreferredInputDeviceNameContains will actually match something.
 	UFUNCTION(CallInEditor, BlueprintCallable, Category = "Voice Command")
 	void LogAvailableInputDevices();
 
@@ -96,6 +109,17 @@ public:
 	// OnPartialResult/OnAudioLevel below for that).
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Voice Command")
 	bool bShowDebugOnScreen = true;
+
+	// DEBUG ONLY. When true, ignores the editable command grammar and does
+	// full open dictation instead (recognizes any English word, not just
+	// your commands). Use this temporarily to tell "mic/Vosk problem" from
+	// "grammar/wording problem": if this recognizes normal speech fine but
+	// the grammar-restricted mode (this off) recognizes nothing, the mic
+	// and Vosk are both working - your command phrases just aren't
+	// matching what Vosk hears. Turn back off before shipping; open
+	// dictation is slower and less accurate for short commands.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Voice Command")
+	bool bUseOpenDictationForDebug = false;
 
 	// Call on Input Action "Started" (key down).
 	UFUNCTION(BlueprintCallable, Category = "Voice Command")
@@ -133,6 +157,18 @@ private:
 	// "is my mic actually picking anything up" indicator.
 	float CurrentAudioLevel = 0.f;
 
+	// Fractional read position for linear-interpolation resampling from
+	// whatever the mic's native sample rate is (44.1kHz/48kHz are typical)
+	// down to the 16kHz the Vosk model expects. Reset to 0 each time
+	// StartListening() begins a new session.
+	double ResampleReadPos = 0.0;
+	static constexpr float TargetSampleRate = 16000.f;
+
+	// Resolves PreferredInputDeviceNameContains (or falls back to
+	// PreferredInputDeviceIndex) against the live device list right before
+	// opening the capture stream. Returns -1 for "use OS default".
+	int32 ResolvePreferredDeviceIndex() const;
+
 	bool InitializeVosk();
 	void ShutdownVosk();
 
@@ -145,6 +181,7 @@ private:
 	PFN_vosk_model_new p_vosk_model_new = nullptr;
 	PFN_vosk_model_free p_vosk_model_free = nullptr;
 	PFN_vosk_recognizer_new_grm p_vosk_recognizer_new_grm = nullptr;
+	PFN_vosk_recognizer_new p_vosk_recognizer_new = nullptr;
 	PFN_vosk_recognizer_free p_vosk_recognizer_free = nullptr;
 	PFN_vosk_recognizer_accept_waveform_s p_vosk_recognizer_accept_waveform_s = nullptr;
 	PFN_vosk_recognizer_result p_vosk_recognizer_result = nullptr;

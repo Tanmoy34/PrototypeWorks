@@ -107,6 +107,7 @@ bool UVoiceCommandComponent::LoadVoskDll()
 	p_vosk_model_new = (PFN_vosk_model_new)FPlatformProcess::GetDllExport(VoskDllHandle, TEXT("vosk_model_new"));
 	p_vosk_model_free = (PFN_vosk_model_free)FPlatformProcess::GetDllExport(VoskDllHandle, TEXT("vosk_model_free"));
 	p_vosk_recognizer_new_grm = (PFN_vosk_recognizer_new_grm)FPlatformProcess::GetDllExport(VoskDllHandle, TEXT("vosk_recognizer_new_grm"));
+	p_vosk_recognizer_new = (PFN_vosk_recognizer_new)FPlatformProcess::GetDllExport(VoskDllHandle, TEXT("vosk_recognizer_new"));
 	p_vosk_recognizer_free = (PFN_vosk_recognizer_free)FPlatformProcess::GetDllExport(VoskDllHandle, TEXT("vosk_recognizer_free"));
 	p_vosk_recognizer_accept_waveform_s = (PFN_vosk_recognizer_accept_waveform_s)FPlatformProcess::GetDllExport(VoskDllHandle, TEXT("vosk_recognizer_accept_waveform_s"));
 	p_vosk_recognizer_result = (PFN_vosk_recognizer_result)FPlatformProcess::GetDllExport(VoskDllHandle, TEXT("vosk_recognizer_result"));
@@ -114,7 +115,7 @@ bool UVoiceCommandComponent::LoadVoskDll()
 	p_vosk_recognizer_partial_result = (PFN_vosk_recognizer_partial_result)FPlatformProcess::GetDllExport(VoskDllHandle, TEXT("vosk_recognizer_partial_result"));
 	p_vosk_set_log_level = (PFN_vosk_set_log_level)FPlatformProcess::GetDllExport(VoskDllHandle, TEXT("vosk_set_log_level"));
 
-	if (!p_vosk_model_new || !p_vosk_model_free || !p_vosk_recognizer_new_grm || !p_vosk_recognizer_free ||
+	if (!p_vosk_model_new || !p_vosk_model_free || !p_vosk_recognizer_new_grm || !p_vosk_recognizer_new || !p_vosk_recognizer_free ||
 		!p_vosk_recognizer_accept_waveform_s || !p_vosk_recognizer_result || !p_vosk_recognizer_final_result ||
 		!p_vosk_recognizer_partial_result || !p_vosk_set_log_level)
 	{
@@ -158,12 +159,30 @@ bool UVoiceCommandComponent::InitializeVosk()
 	}
 
 	const FString Grammar = BuildGrammarJson();
+	UE_LOG(LogTemp, Log, TEXT("VoiceCommandComponent: grammar = %s"), *Grammar);
+
+	// If this only ever prints ["[unk]"] with no real words, the NPC's
+	// VoiceCommands list was empty when this ran (e.g. no NPC found in the
+	// level yet) - the recognizer then has nothing to match against and
+	// will never return real text, regardless of mic quality.
+	if (Grammar == TEXT("[\"[unk]\"]"))
+	{
+		UE_LOG(LogTemp, Warning, TEXT("VoiceCommandComponent: grammar has no real command words - is there an NPCCharacter placed in the level with VoiceCommands filled in?"));
+	}
 
 	// Restricting to a grammar (instead of vosk_recognizer_new, which does
 	// open dictation) is the key accuracy improvement over the old SAPI
 	// setup - the recognizer only ever has to choose between your command
 	// words, not the entire English language.
-	Recognizer = p_vosk_recognizer_new_grm(Model, 16000.f, TCHAR_TO_UTF8(*Grammar));
+	Recognizer = bUseOpenDictationForDebug
+		? p_vosk_recognizer_new(Model, TargetSampleRate)
+		: p_vosk_recognizer_new_grm(Model, TargetSampleRate, TCHAR_TO_UTF8(*Grammar));
+
+	if (bUseOpenDictationForDebug)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("VoiceCommandComponent: bUseOpenDictationForDebug is ON - grammar restriction is bypassed, commands will NOT trigger. Turn this off once you've confirmed Vosk can hear you."));
+	}
+
 	if (!Recognizer)
 	{
 		UE_LOG(LogTemp, Error, TEXT("VoiceCommandComponent: failed to create Vosk recognizer."));
@@ -254,7 +273,7 @@ void UVoiceCommandComponent::LogAvailableInputDevices()
 		return;
 	}
 
-	UE_LOG(LogTemp, Log, TEXT("VoiceCommandComponent: available input devices (set PreferredInputDeviceIndex to one of these):"));
+	UE_LOG(LogTemp, Log, TEXT("VoiceCommandComponent: available input devices:"));
 	for (int32 Index = 0; Index < Devices.Num(); ++Index)
 	{
 		UE_LOG(LogTemp, Log, TEXT("  [%d] %s"), Index, *Devices[Index].DeviceName);
@@ -264,6 +283,39 @@ void UVoiceCommandComponent::LogAvailableInputDevices()
 	{
 		UE_LOG(LogTemp, Warning, TEXT("  (no input devices found - check Windows Sound settings > Input)"));
 	}
+}
+
+int32 UVoiceCommandComponent::ResolvePreferredDeviceIndex() const
+{
+	if (PreferredInputDeviceNameContains.IsEmpty())
+	{
+		return PreferredInputDeviceIndex; // may still be -1 = OS default
+	}
+
+	// Fresh enumeration right before opening the stream - this is what
+	// makes name matching robust against index-order surprises: we're
+	// always looking the name up against the live list, not trusting a
+	// number written down earlier.
+	Audio::FAudioCapture TempCapture;
+	TArray<Audio::FCaptureDeviceInfo> Devices;
+
+	if (!TempCapture.GetCaptureDevicesAvailable(Devices))
+	{
+		UE_LOG(LogTemp, Warning, TEXT("VoiceCommandComponent: could not enumerate input devices to match \"%s\" - falling back to OS default."), *PreferredInputDeviceNameContains);
+		return -1;
+	}
+
+	for (int32 Index = 0; Index < Devices.Num(); ++Index)
+	{
+		if (Devices[Index].DeviceName.Contains(PreferredInputDeviceNameContains))
+		{
+			UE_LOG(LogTemp, Log, TEXT("VoiceCommandComponent: matched \"%s\" -> [%d] %s"), *PreferredInputDeviceNameContains, Index, *Devices[Index].DeviceName);
+			return Index;
+		}
+	}
+
+	UE_LOG(LogTemp, Warning, TEXT("VoiceCommandComponent: no input device name contains \"%s\" - falling back to OS default. Available devices were logged above/via LogAvailableInputDevices."), *PreferredInputDeviceNameContains);
+	return -1;
 }
 
 void UVoiceCommandComponent::StartListening()
@@ -281,8 +333,10 @@ void UVoiceCommandComponent::StartListening()
 		PendingAudioBuffer.Reset();
 	}
 
+	ResampleReadPos = 0.0;
+
 	Audio::FAudioCaptureDeviceParams Params = Audio::FAudioCaptureDeviceParams();
-	Params.DeviceIndex = PreferredInputDeviceIndex; // -1 = OS default, otherwise the mic you picked
+	Params.DeviceIndex = ResolvePreferredDeviceIndex();
 
 	// This engine version's callback hands back an untyped const void* -
 	// the capture stream is opened below with default (float) format, so
@@ -352,6 +406,11 @@ void UVoiceCommandComponent::StopListening()
 
 	const FString ResultJson = UTF8_TO_TCHAR(p_vosk_recognizer_final_result(Recognizer));
 
+	// Always log the raw, unparsed response - this is the ground truth of
+	// what Vosk actually returned, whether or not it happened to contain a
+	// usable "text" field. Compare this against the grammar logged above.
+	UE_LOG(LogTemp, Log, TEXT("VoiceCommandComponent: raw result = %s"), *ResultJson);
+
 	TSharedPtr<FJsonObject> JsonObject;
 	TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(ResultJson);
 	if (FJsonSerializer::Deserialize(Reader, JsonObject) && JsonObject.IsValid())
@@ -373,28 +432,49 @@ void UVoiceCommandComponent::StopListening()
 		}
 		else if (bShowDebugOnScreen && GEngine)
 		{
-			GEngine->AddOnScreenDebugMessage(9002, 2.f, FColor::Red, TEXT("Final: (nothing recognized)"));
+			GEngine->AddOnScreenDebugMessage(9002, 2.f, FColor::Red, FString::Printf(TEXT("Final: (nothing recognized) raw=%s"), *ResultJson));
 		}
 	}
 }
 
 void UVoiceCommandComponent::OnAudioCaptured(const float* AudioData, int32 NumFrames, int32 NumChannels, int32 SampleRate, double StreamTime, bool bOverflow)
 {
-	// Runs on the audio capture thread - keep this cheap, just convert
-	// float [-1,1] PCM to the int16 Vosk expects and buffer it. The real
-	// work happens on the game thread in ProcessBufferedAudio().
+	// Runs on the audio capture thread - keep this cheap.
 	FScopeLock Lock(&AudioBufferLock);
+
+	if (NumFrames <= 0 || SampleRate <= 0) return;
 
 	float PeakThisChunk = 0.f;
 
-	for (int32 Frame = 0; Frame < NumFrames; ++Frame)
-	{
-		float Sample = AudioData[Frame * NumChannels]; // mono: first channel only
-		Sample = FMath::Clamp(Sample, -1.f, 1.f);
-		PendingAudioBuffer.Add((int16)(Sample * 32767.f));
+	// Linear-interpolation resample from the mic's native rate (commonly
+	// 44100 or 48000 Hz) down to the 16000 Hz the Vosk model was created
+	// expecting. Skipping this and feeding native-rate samples straight
+	// through - which the very first version of this file did - plays
+	// your voice back roughly 3x too fast internally as far as Vosk is
+	// concerned: it's pure noise to the recognizer no matter how clearly
+	// you speak, which is exactly what was happening before this fix.
+	const double Ratio = (double)SampleRate / (double)TargetSampleRate;
 
-		PeakThisChunk = FMath::Max(PeakThisChunk, FMath::Abs(Sample));
+	while (ResampleReadPos < (double)(NumFrames - 1))
+	{
+		const int32 Index = (int32)ResampleReadPos;
+		const float Frac = (float)(ResampleReadPos - (double)Index);
+
+		const float SampleA = AudioData[Index * NumChannels];
+		const float SampleB = AudioData[FMath::Min(Index + 1, NumFrames - 1) * NumChannels];
+		float Interpolated = FMath::Lerp(SampleA, SampleB, Frac);
+		Interpolated = FMath::Clamp(Interpolated, -1.f, 1.f);
+
+		PendingAudioBuffer.Add((int16)(Interpolated * 32767.f));
+		PeakThisChunk = FMath::Max(PeakThisChunk, FMath::Abs(Interpolated));
+
+		ResampleReadPos += Ratio;
 	}
+
+	// Carry the fractional remainder into the next chunk instead of
+	// resetting to 0, so the resampling stays continuous across buffer
+	// boundaries rather than clicking/gapping every callback.
+	ResampleReadPos -= (double)NumFrames;
 
 	// Smoothed rather than an instant snap, so the on-screen meter doesn't
 	// flicker to zero between words - still responds fast enough to make
