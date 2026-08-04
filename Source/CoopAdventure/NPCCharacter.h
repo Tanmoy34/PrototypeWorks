@@ -4,17 +4,41 @@
 
 #include "CoreMinimal.h"
 #include "GameFramework/Character.h"
-#include "Net/UnrealNetwork.h" 
 #include "NPCCharacter.generated.h"
 
 UENUM(BlueprintType)
 enum class ENPCState : uint8
 {
+	// Reused as the "commanded to stand still and look at the player" state.
 	Idle,
-	Wandering,
+	wandering,
 	Waiting,
 	MoveAside,
 	Returning
+};
+
+// What a recognized voice command (or UI button) should make the NPC do.
+UENUM(BlueprintType)
+enum class ENPCCommandAction : uint8
+{
+	StandAndLook,
+	ResumeWander
+};
+
+// One entry the designer can edit in the NPC's Details panel: a list of
+// phrases that should all trigger the same action. Recognized speech text
+// is matched against these with a case-insensitive "contains" check, so
+// short, distinct phrases work best (e.g. "stand", "wait here", "stay").
+USTRUCT(BlueprintType)
+struct FNPCVoiceCommand
+{
+	GENERATED_BODY()
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Voice Command")
+	TArray<FString> TriggerPhrases;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Voice Command")
+	ENPCCommandAction Action = ENPCCommandAction::StandAndLook;
 };
 
 UCLASS()
@@ -30,25 +54,26 @@ protected:
 	// Called when the game starts or when spawned
 	virtual void BeginPlay() override;
 
-	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
 public:
 	// Called every frame
 	virtual void Tick(float DeltaTime) override;
 
-	UPROPERTY(ReplicatedUsing = OnRep_CurrentState, BlueprintReadOnly)
-	ENPCState CurrentState = ENPCState::Wandering;
+	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
 
+	UPROPERTY(ReplicatedUsing = OnRep_CurrentState, BlueprintReadOnly)
+	ENPCState CurrentState = ENPCState::wandering;
 
 	UFUNCTION()
-	void OnRep_CurrentState();
-	
-	void SetState(ENPCState NewState);
+	void  OnRep_CurrentState();
+
+	void SetState(ENPCState newState);
 
 	ENPCState GetState() const
 	{
 		return CurrentState;
 	}
-	
+
+
 	UPROPERTY(EditAnywhere, BlueprintReadOnly)
 	float WanderRadius = 1200.f;
 
@@ -58,20 +83,39 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly)
 	float MaxWaitTime = 4.f;
 
-	// How close a recognized voice command has to originate to affect this NPC.
-	UPROPERTY(EditAnywhere, BlueprintReadOnly)
-	float ListenRadius = 800.f;
+	// -------- Commanded idle / look-at-player --------
 
-	// How far the NPC steps aside when it reacts to a command.
-	UPROPERTY(EditAnywhere, BlueprintReadOnly)
-	float MoveAsideDistance = 350.f;
+	// Who the NPC should turn to face while in the commanded Idle state.
+	// Replicated so it looks correct for every client, not just the host.
+	UPROPERTY(ReplicatedUsing = OnRep_LookAtTarget, BlueprintReadOnly)
+	AActor* LookAtTarget = nullptr;
 
-	// Server-side entry point: called once per NPC when the player's
-	// SpeechRecognizerComponent recognizes a supported phrase. SourceLocation
-	// is the speaker's (player's) world location, used for the range check
-	// and to pick a direction to step away in.
-	UFUNCTION(BlueprintCallable)
-	void HandleVoiceCommand(const FString& Command, const FVector& SourceLocation);
+	UFUNCTION()
+	void OnRep_LookAtTarget();
+
+	// How fast the NPC turns to face LookAtTarget, in degrees/sec.
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "NPC Commands")
+	float LookAtTurnRate = 180.f;
+
+	// Server-authoritative: stop wandering, stand still, and face a player.
+	// If Target is null, the nearest player-controlled pawn is used.
+	void Server_CommandStandAndLook(AActor* Target = nullptr);
+
+	// Server-authoritative: resume the normal wandering behavior.
+	void Server_CommandResumeWander();
+
+	// -------- Editable voice command list --------
+
+	// Designer-editable list of phrases -> actions. Fill this in per-NPC
+	// in the editor. Matching is case-insensitive "contains", so keep
+	// phrases short and distinct from each other.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Voice Command")
+	TArray<FNPCVoiceCommand> VoiceCommands;
+
+	// Server-only. Called by the player's Server RPC once speech has been
+	// recognized as text. Finds the first matching command and executes it.
+	// Returns true if a command matched.
+	bool ProcessVoiceCommandText(const FString& RecognizedText, AActor* Speaker);
 
 	// Called to bind functionality to input
 	virtual void SetupPlayerInputComponent(class UInputComponent* PlayerInputComponent) override;

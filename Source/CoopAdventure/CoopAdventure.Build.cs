@@ -1,5 +1,6 @@
 // Copyright Epic Games, Inc. All Rights Reserved.
 
+using System.IO;
 using UnrealBuildTool;
 
 public class CoopAdventure : ModuleRules
@@ -21,17 +22,10 @@ public class CoopAdventure : ModuleRules
 			"Slate",
 			"OnlineSubsystem",
 			"NavigationSystem",
-			"OnlineSubsystemSteam"
+			"OnlineSubsystemSteam",
+			"AudioCaptureCore", // mic capture, for VoiceCommandComponent
+			"Json", "JsonUtilities" // parsing Vosk's recognition result
 		});
-		
-		PublicAdditionalLibraries.AddRange(new string[] 
-		{
-			"sapi.lib",
-			"ole32.lib",
-			"oleaut32.lib"
-		});
-
-		PrivateDependencyModuleNames.AddRange(new string[] { });
 
 		PublicIncludePaths.AddRange(new string[] {
 			"CoopAdventure",
@@ -49,6 +43,34 @@ public class CoopAdventure : ModuleRules
 			"CoopAdventure/Variant_SideScrolling/Interfaces",
 			"CoopAdventure/Variant_SideScrolling/UI"
 		});
+
+		// ---- Vosk (free, offline speech recognition for VoiceCommandComponent) ----
+		// No linking here at all anymore - libvosk.dll is loaded and its
+		// functions resolved entirely at runtime (see VoiceCommandComponent.cpp
+		// LoadVoskDll()), so this module has zero link-time dependency on it.
+		// This block only makes sure it ships correctly in packaged builds.
+		if (Target.Platform == UnrealTargetPlatform.Win64)
+		{
+			// ModuleDirectory = .../Source/CoopAdventure, so ".." x2 gets to the
+			// project root, where ThirdParty lives.
+			string VoskPath = Path.Combine(ModuleDirectory, "..", "..", "ThirdParty", "Vosk", "vosk-win64-0.3.45");
+
+			string[] RuntimeDlls = {
+				"libvosk.dll",
+				"libgcc_s_seh-1.dll",
+				"libstdc++-6.dll",
+				"libwinpthread-1.dll"
+			};
+
+			foreach (string Dll in RuntimeDlls)
+			{
+				string DllPath = Path.Combine(VoskPath, Dll);
+				if (File.Exists(DllPath))
+				{
+					RuntimeDependencies.Add(DllPath);
+				}
+			}
+		}
 
 		// Uncomment if you are using Slate UI
 		// PrivateDependencyModuleNames.AddRange(new string[] { "Slate", "SlateCore" });

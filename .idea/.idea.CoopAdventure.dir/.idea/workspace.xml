@@ -8,13 +8,16 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="1cc0744d-c5c0-4e46-b1e1-e806eb9cdab8" name="Changes" comment="">
+      <change afterPath="$PROJECT_DIR$/Source/CoopAdventure/VoiceCommandComponent.cpp" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/Source/CoopAdventure/VoiceCommandComponent.h" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/.idea.CoopAdventure.dir/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/.idea.CoopAdventure.dir/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/Source/CoopAdventure/CoopAdventure.Build.cs" beforeDir="false" afterPath="$PROJECT_DIR$/Source/CoopAdventure/CoopAdventure.Build.cs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/Source/CoopAdventure/CoopAdventureCharacter.cpp" beforeDir="false" afterPath="$PROJECT_DIR$/Source/CoopAdventure/CoopAdventureCharacter.cpp" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/Source/CoopAdventure/CoopAdventureCharacter.h" beforeDir="false" afterPath="$PROJECT_DIR$/Source/CoopAdventure/CoopAdventureCharacter.h" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/Source/CoopAdventure/NPCAIController.cpp" beforeDir="false" afterPath="$PROJECT_DIR$/Source/CoopAdventure/NPCAIController.cpp" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/Source/CoopAdventure/NPCAIController.h" beforeDir="false" afterPath="$PROJECT_DIR$/Source/CoopAdventure/NPCAIController.h" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/Source/CoopAdventure/NPCCharacter.cpp" beforeDir="false" afterPath="$PROJECT_DIR$/Source/CoopAdventure/NPCCharacter.cpp" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/Source/CoopAdventure/NPCCharacter.h" beforeDir="false" afterPath="$PROJECT_DIR$/Source/CoopAdventure/NPCCharacter.h" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Source/CoopAdventure/SpeechRecognizerComponent.cpp" beforeDir="false" afterPath="$PROJECT_DIR$/Source/CoopAdventure/SpeechRecognizerComponent.cpp" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Source/CoopAdventure/SpeechRecognizerComponent.h" beforeDir="false" afterPath="$PROJECT_DIR$/Source/CoopAdventure/SpeechRecognizerComponent.h" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -24,8 +27,27 @@
   <component name="Git.Settings">
     <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$" />
   </component>
+  <component name="GitHubPullRequestSearchHistory">{
+  &quot;lastFilter&quot;: {
+    &quot;state&quot;: &quot;OPEN&quot;,
+    &quot;assignee&quot;: &quot;Tanmoy34&quot;
+  }
+}</component>
+  <component name="GithubPullRequestsUISettings">{
+  &quot;selectedUrlAndAccountId&quot;: {
+    &quot;url&quot;: &quot;https://github.com/Tanmoy34/PrototypeWorks.git&quot;,
+    &quot;accountId&quot;: &quot;99eb2b6c-7f00-4c44-a325-64d39919045e&quot;
+  }
+}</component>
   <component name="HighlightingSettingsPerFile">
     <setting file="file://C:/Program Files (x86)/Windows Kits/10/Include/10.0.26100.0/um/sapi.h" root0="SKIP_HIGHLIGHTING" />
+    <setting file="file://$PROJECT_DIR$/Source/CoopAdventure/CoopAdventure.Build.cs" root0="FORCE_HIGHLIGHTING" />
+    <setting file="file://$PROJECT_DIR$/Source/CoopAdventure/NPCAIController.cpp" root0="FORCE_HIGHLIGHTING" />
+    <setting file="file://$PROJECT_DIR$/Source/CoopAdventure/NPCAIController.h" root0="FORCE_HIGHLIGHTING" />
+    <setting file="file://$PROJECT_DIR$/Source/CoopAdventure/NPCCharacter.cpp" root0="FORCE_HIGHLIGHTING" />
+    <setting file="file://$PROJECT_DIR$/Source/CoopAdventure/NPCCharacter.h" root0="FORCE_HIGHLIGHTING" />
+    <setting file="file://$PROJECT_DIR$/Source/CoopAdventure/SpeechRecognizerComponent.cpp" root0="FORCE_HIGHLIGHTING" />
+    <setting file="file://$PROJECT_DIR$/Source/CoopAdventure/SpeechRecognizerComponent.h" root0="FORCE_HIGHLIGHTING" />
   </component>
   <component name="ProjectColorInfo">{
   &quot;associatedIndex&quot;: 5
@@ -186,13 +208,6 @@
         <option name="Build" />
       </method>
     </configuration>
-    <configuration default="true" type="Uproject" factoryName="rider.uproject">
-      <option name="PROJECT_FILE_PATH" value="" />
-      <option name="AUTO_SELECT_PRIORITY" value="0" />
-      <method v="2">
-        <option name="Build" />
-      </method>
-    </configuration>
   </component>
   <component name="SpellCheckerSettings" RuntimeDictionaries="0" Folders="0" CustomDictionaries="0" DefaultDictionary="application-level" UseSingleDictionary="true" transferred="true" />
   <component name="TaskManager">
@@ -213,6 +228,8 @@
       <workItem from="1784876697605" duration="935000" />
       <workItem from="1784878680346" duration="124000" />
       <workItem from="1784879504524" duration="510000" />
+      <workItem from="1785830263384" duration="877000" />
+      <workItem from="1785831739681" duration="296000" />
     </task>
     <servers />
   </component>

@@ -12,6 +12,9 @@
 #include "InputActionValue.h"
 #include "CoopAdventure.h"
 #include "Spreader.h"
+#include "NPCCharacter.h"
+#include "VoiceCommandComponent.h"
+#include "Kismet/GameplayStatics.h"
 
 ACoopAdventureCharacter::ACoopAdventureCharacter()
 {
@@ -68,6 +71,10 @@ void ACoopAdventureCharacter::SetupPlayerInputComponent(UInputComponent* PlayerI
 		EnhancedInputComponent->BindAction(LookAction, ETriggerEvent::Triggered, this, &ACoopAdventureCharacter::Look);
 
 		EnhancedInputComponent->BindAction(EntractAction, ETriggerEvent::Started, this, &ACoopAdventureCharacter::Intract);
+
+		// Voice: hold V to talk, release to send the command off for recognition.
+		EnhancedInputComponent->BindAction(VoiceActivateAction, ETriggerEvent::Started, this, &ACoopAdventureCharacter::OnVoiceActivateStarted);
+		EnhancedInputComponent->BindAction(VoiceActivateAction, ETriggerEvent::Completed, this, &ACoopAdventureCharacter::OnVoiceActivateCompleted);
 	}
 	else
 	{
@@ -91,6 +98,26 @@ void ACoopAdventureCharacter::Look(const FInputActionValue& Value)
 
 	// route the input
 	DoLook(LookAxisVector.X, LookAxisVector.Y);
+}
+
+void ACoopAdventureCharacter::OnVoiceActivateStarted(const FInputActionValue& Value)
+{
+	if (!IsLocallyControlled()) return;
+
+	if (UVoiceCommandComponent* VoiceComp = FindComponentByClass<UVoiceCommandComponent>())
+	{
+		VoiceComp->StartListening();
+	}
+}
+
+void ACoopAdventureCharacter::OnVoiceActivateCompleted(const FInputActionValue& Value)
+{
+	if (!IsLocallyControlled()) return;
+
+	if (UVoiceCommandComponent* VoiceComp = FindComponentByClass<UVoiceCommandComponent>())
+	{
+		VoiceComp->StopListening();
+	}
 }
 
 void ACoopAdventureCharacter::DoMove(float Right, float Forward)
@@ -176,4 +203,56 @@ void ACoopAdventureCharacter::Intract()
 	}
 
 	
+}
+
+// -------- NPC commands --------
+
+void ACoopAdventureCharacter::CommandNPCStandIdle()
+{
+	Server_CommandNPCStandIdle();
+}
+
+void ACoopAdventureCharacter::CommandNPCResumeWander()
+{
+	Server_CommandNPCResumeWander();
+}
+
+void ACoopAdventureCharacter::IssueNPCVoiceCommand(const FString& RecognizedText)
+{
+	if (RecognizedText.IsEmpty()) return;
+
+	Server_IssueNPCVoiceCommand(RecognizedText);
+}
+
+void ACoopAdventureCharacter::Server_CommandNPCStandIdle_Implementation()
+{
+	if (ANPCCharacter* NPC = FindTheNPC())
+	{
+		NPC->Server_CommandStandAndLook(this);
+	}
+}
+
+void ACoopAdventureCharacter::Server_CommandNPCResumeWander_Implementation()
+{
+	if (ANPCCharacter* NPC = FindTheNPC())
+	{
+		NPC->Server_CommandResumeWander();
+	}
+}
+
+void ACoopAdventureCharacter::Server_IssueNPCVoiceCommand_Implementation(const FString& RecognizedText)
+{
+	if (ANPCCharacter* NPC = FindTheNPC())
+	{
+		NPC->ProcessVoiceCommandText(RecognizedText, this);
+	}
+}
+
+ANPCCharacter* ACoopAdventureCharacter::FindTheNPC() const
+{
+	// Single-NPC project: there's only ever one in the level, so just grab it.
+	TArray<AActor*> FoundNPCs;
+	UGameplayStatics::GetAllActorsOfClass(GetWorld(), ANPCCharacter::StaticClass(), FoundNPCs);
+
+	return FoundNPCs.Num() > 0 ? Cast<ANPCCharacter>(FoundNPCs[0]) : nullptr;
 }

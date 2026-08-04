@@ -3,17 +3,28 @@
 
 #include "NPCCharacter.h"
 #include "NPCAIController.h"
-
-#include "Net/UnrealNetwork.h" 
-
+#include "Net/UnrealNetwork.h"
+#include "Kismet/GameplayStatics.h"
 
 // Sets default values
 ANPCCharacter::ANPCCharacter()
 {
 	// Set this character to call Tick() every frame.  You can turn this off to improve performance if you don't need it.
 	PrimaryActorTick.bCanEverTick = true;
+
 	bReplicates = true;
-	
+
+	// Reasonable starting defaults so the feature works out of the box even
+	// before a designer edits the list in the Details panel.
+	FNPCVoiceCommand StandCommand;
+	StandCommand.TriggerPhrases = { TEXT("stand"), TEXT("stay"), TEXT("wait here"), TEXT("stop") };
+	StandCommand.Action = ENPCCommandAction::StandAndLook;
+	VoiceCommands.Add(StandCommand);
+
+	FNPCVoiceCommand WanderCommand;
+	WanderCommand.TriggerPhrases = { TEXT("walk"), TEXT("wander"), TEXT("go"), TEXT("move around") };
+	WanderCommand.Action = ENPCCommandAction::ResumeWander;
+	VoiceCommands.Add(WanderCommand);
 }
 
 // Called when the game starts or when spawned
@@ -23,17 +34,37 @@ void ANPCCharacter::BeginPlay()
 	
 }
 
+// Called every frame
+void ANPCCharacter::Tick(float DeltaTime)
+{
+	Super::Tick(DeltaTime);
+
+	// Smoothly turn to face LookAtTarget while commanded to stand idle.
+	// Runs on every machine (server + clients) purely for visuals; the
+	// actual state/target are server-authoritative and replicated.
+	if (CurrentState == ENPCState::Idle && LookAtTarget)
+	{
+		const FVector ToTarget = LookAtTarget->GetActorLocation() - GetActorLocation();
+		FRotator DesiredRotation = ToTarget.Rotation();
+		DesiredRotation.Pitch = 0.f;
+		DesiredRotation.Roll = 0.f;
+
+		const FRotator NewRotation = FMath::RInterpTo(
+			GetActorRotation(),
+			DesiredRotation,
+			DeltaTime,
+			LookAtTurnRate / 90.f);
+
+		SetActorRotation(NewRotation);
+	}
+}
+
 void ANPCCharacter::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
 {
 	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
 
 	DOREPLIFETIME(ANPCCharacter, CurrentState);
-}
-
-// Called every frame
-void ANPCCharacter::Tick(float DeltaTime)
-{
-	Super::Tick(DeltaTime);
+	DOREPLIFETIME(ANPCCharacter, LookAtTarget);
 }
 
 void ANPCCharacter::OnRep_CurrentState()
@@ -41,33 +72,104 @@ void ANPCCharacter::OnRep_CurrentState()
 	
 }
 
-void ANPCCharacter::SetState(ENPCState NewState)
+void ANPCCharacter::OnRep_LookAtTarget()
 {
-	if (CurrentState == NewState)
-		return;
 
-	CurrentState = NewState;
+}
+
+void ANPCCharacter::SetState(ENPCState newState)
+{
+	if (CurrentState == newState)return;
+
+	CurrentState = newState;
 
 	OnRep_CurrentState();
 }
 
-void ANPCCharacter::HandleVoiceCommand(const FString& Command, const FVector& SourceLocation)
+void ANPCCharacter::Server_CommandStandAndLook(AActor* Target)
 {
-	// This is gameplay logic that changes movement/state, so it must only
-	// ever run with authority (the Host/Server), same as everything else
-	// driving this NPC.
-	if (!HasAuthority())
-		return;
+	if (!HasAuthority()) return;
 
-	if (FVector::Dist(GetActorLocation(), SourceLocation) > ListenRadius)
-		return;
+	if (!Target)
+	{
+		// Find the nearest player-controlled pawn to look at.
+		float BestDistSq = TNumericLimits<float>::Max();
+		for (FConstPlayerControllerIterator It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
+		{
+			if (APlayerController* PC = It->Get())
+			{
+				if (APawn* PlayerPawn = PC->GetPawn())
+				{
+					const float DistSq = FVector::DistSquared(PlayerPawn->GetActorLocation(), GetActorLocation());
+					if (DistSq < BestDistSq)
+					{
+						BestDistSq = DistSq;
+						Target = PlayerPawn;
+					}
+				}
+			}
+		}
+	}
 
-	ANPCAIController* AICon = Cast<ANPCAIController>(GetController());
+	LookAtTarget = Target;
+	OnRep_LookAtTarget();
 
-	if (!AICon)
-		return;
+	if (ANPCAIController* NPCController = Cast<ANPCAIController>(GetController()))
+	{
+		NPCController->CommandStandAndLook();
+	}
 
-	AICon->MoveAsideFrom(SourceLocation);
+	SetState(ENPCState::Idle);
+}
+
+void ANPCCharacter::Server_CommandResumeWander()
+{
+	if (!HasAuthority()) return;
+
+	LookAtTarget = nullptr;
+	OnRep_LookAtTarget();
+
+	if (ANPCAIController* NPCController = Cast<ANPCAIController>(GetController()))
+	{
+		NPCController->CommandResumeWander();
+	}
+	else
+	{
+		SetState(ENPCState::wandering);
+	}
+}
+
+bool ANPCCharacter::ProcessVoiceCommandText(const FString& RecognizedText, AActor* Speaker)
+{
+	if (!HasAuthority()) return false;
+
+	if (RecognizedText.IsEmpty()) return false;
+
+	const FString LowerText = RecognizedText.ToLower();
+
+	for (const FNPCVoiceCommand& Command : VoiceCommands)
+	{
+		for (const FString& Phrase : Command.TriggerPhrases)
+		{
+			if (Phrase.IsEmpty()) continue;
+
+			if (LowerText.Contains(Phrase.ToLower()))
+			{
+				switch (Command.Action)
+				{
+				case ENPCCommandAction::StandAndLook:
+					Server_CommandStandAndLook(Speaker);
+					break;
+				case ENPCCommandAction::ResumeWander:
+					Server_CommandResumeWander();
+					break;
+				}
+				return true;
+			}
+		}
+	}
+
+	return false;
 }
 
 // Called to bind functionality to input
