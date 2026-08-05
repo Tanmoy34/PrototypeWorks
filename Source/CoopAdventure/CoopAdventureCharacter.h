@@ -114,6 +114,14 @@ public:
 	UFUNCTION(BlueprintCallable, Category="NPC Commands")
 	void CommandNPCResumeWander();
 
+	/** Button: tell the NPC to jump once. */
+	UFUNCTION(BlueprintCallable, Category="NPC Commands")
+	void CommandNPCJump();
+
+	/** Button: tell the NPC to start following this player. */
+	UFUNCTION(BlueprintCallable, Category="NPC Commands")
+	void CommandNPCFollow();
+
 	/** Called by the voice component once speech has been turned into text. */
 	UFUNCTION(BlueprintCallable, Category="Voice Command")
 	void IssueNPCVoiceCommand(const FString& RecognizedText);
@@ -127,7 +135,32 @@ protected:
 	void Server_CommandNPCResumeWander();
 
 	UFUNCTION(Server, Reliable)
+	void Server_CommandNPCJump();
+
+	UFUNCTION(Server, Reliable)
+	void Server_CommandNPCFollow();
+
+	UFUNCTION(Server, Reliable)
 	void Server_IssueNPCVoiceCommand(const FString& RecognizedText);
+
+	// Below this speed (cm/s) the player counts as "standing still" for
+	// the purpose of issuing NPC commands. Also blocked entirely while
+	// airborne (jumping/falling).
+	UPROPERTY(EditAnywhere, Category = "NPC Commands")
+	float StandingStillVelocityThreshold = 10.f;
+
+	// Server-side gate used by every NPC command entry point (both UI
+	// buttons and voice): only the host may command the NPC, and only
+	// while standing still. On a listen server, the host's own
+	// PlayerController has no NetConnection (it's local); every remote
+	// client's does - that's what "host" is checked against here. If you
+	// ever move to a dedicated server, nobody satisfies that check, so
+	// you'd need to swap in your own host/admin flag at that point.
+	bool CanIssueNPCCommand(FString& OutReason) const;
+
+	// Shows OutReason from a rejected command on the issuing client only.
+	UFUNCTION(Client, Reliable)
+	void Client_NotifyNPCCommandRejected(const FString& Reason);
 
 	// Single-NPC helper: this project only ever has one NPC in the level,
 	// so we just grab the first one that exists rather than tracking a

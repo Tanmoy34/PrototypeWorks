@@ -25,6 +25,16 @@ ANPCCharacter::ANPCCharacter()
 	WanderCommand.TriggerPhrases = { TEXT("walk"), TEXT("wander"), TEXT("go"), TEXT("move around") };
 	WanderCommand.Action = ENPCCommandAction::ResumeWander;
 	VoiceCommands.Add(WanderCommand);
+
+	FNPCVoiceCommand JumpCommand;
+	JumpCommand.TriggerPhrases = { TEXT("jump"), TEXT("hop") };
+	JumpCommand.Action = ENPCCommandAction::Jump;
+	VoiceCommands.Add(JumpCommand);
+
+	FNPCVoiceCommand FollowCommand;
+	FollowCommand.TriggerPhrases = { TEXT("follow"), TEXT("follow me"), TEXT("come here"), TEXT("come") };
+	FollowCommand.Action = ENPCCommandAction::Follow;
+	VoiceCommands.Add(FollowCommand);
 }
 
 // Called when the game starts or when spawned
@@ -65,6 +75,7 @@ void ANPCCharacter::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLif
 
 	DOREPLIFETIME(ANPCCharacter, CurrentState);
 	DOREPLIFETIME(ANPCCharacter, LookAtTarget);
+	DOREPLIFETIME(ANPCCharacter, FollowTarget);
 }
 
 void ANPCCharacter::OnRep_CurrentState()
@@ -73,6 +84,11 @@ void ANPCCharacter::OnRep_CurrentState()
 }
 
 void ANPCCharacter::OnRep_LookAtTarget()
+{
+
+}
+
+void ANPCCharacter::OnRep_FollowTarget()
 {
 
 }
@@ -129,6 +145,9 @@ void ANPCCharacter::Server_CommandResumeWander()
 	LookAtTarget = nullptr;
 	OnRep_LookAtTarget();
 
+	FollowTarget = nullptr;
+	OnRep_FollowTarget();
+
 	if (ANPCAIController* NPCController = Cast<ANPCAIController>(GetController()))
 	{
 		NPCController->CommandResumeWander();
@@ -137,6 +156,41 @@ void ANPCCharacter::Server_CommandResumeWander()
 	{
 		SetState(ENPCState::wandering);
 	}
+}
+
+void ANPCCharacter::Server_CommandJump()
+{
+	if (!HasAuthority()) return;
+
+	// A momentary action - doesn't touch CurrentState, so the NPC just
+	// hops in place (or mid-stride, if it happens to be wandering/following)
+	// and carries on with whatever it was already doing.
+	Jump();
+
+	FTimerHandle JumpReleaseTimer;
+	GetWorld()->GetTimerManager().SetTimer(
+		JumpReleaseTimer,
+		[this]() { StopJumping(); },
+		0.2f,
+		false);
+}
+
+void ANPCCharacter::Server_CommandFollow(AActor* Target)
+{
+	if (!HasAuthority()) return;
+
+	LookAtTarget = nullptr;
+	OnRep_LookAtTarget();
+
+	FollowTarget = Target;
+	OnRep_FollowTarget();
+
+	if (ANPCAIController* NPCController = Cast<ANPCAIController>(GetController()))
+	{
+		NPCController->CommandFollow(Target);
+	}
+
+	SetState(ENPCState::Following);
 }
 
 bool ANPCCharacter::ProcessVoiceCommandText(const FString& RecognizedText, AActor* Speaker)
@@ -162,6 +216,12 @@ bool ANPCCharacter::ProcessVoiceCommandText(const FString& RecognizedText, AActo
 					break;
 				case ENPCCommandAction::ResumeWander:
 					Server_CommandResumeWander();
+					break;
+				case ENPCCommandAction::Jump:
+					Server_CommandJump();
+					break;
+				case ENPCCommandAction::Follow:
+					Server_CommandFollow(Speaker);
 					break;
 				}
 				return true;

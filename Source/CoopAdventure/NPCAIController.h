@@ -44,6 +44,19 @@ public:
 	// Cancels any pending timer and puts the NPC back into normal wandering.
 	void CommandResumeWander();
 
+	// Cancels any pending timer and starts continuously moving toward
+	// Target, re-pathing periodically as it moves. Pass nullptr to just
+	// stop (falls back to wandering).
+	void CommandFollow(AActor* Target);
+
+	UPROPERTY(EditAnywhere, Category = "Follow")
+	float FollowAcceptanceRadius = 150.f;
+
+	// How often to issue a fresh MoveToActor while following, in seconds.
+	// Doesn't need to be every tick - the target only moves so fast.
+	UPROPERTY(EditAnywhere, Category = "Follow")
+	float FollowRepathInterval = 0.5f;
+
 protected:
 	void MoveToRandomLocation();
 
@@ -54,5 +67,7 @@ protected:
 private:
 
 	FTimerHandle WanderTimer;
+
+	float FollowRepathTimer = 0.f;
 
 };

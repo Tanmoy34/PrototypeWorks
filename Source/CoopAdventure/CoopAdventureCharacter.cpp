@@ -217,6 +217,16 @@ void ACoopAdventureCharacter::CommandNPCResumeWander()
 	Server_CommandNPCResumeWander();
 }
 
+void ACoopAdventureCharacter::CommandNPCJump()
+{
+	Server_CommandNPCJump();
+}
+
+void ACoopAdventureCharacter::CommandNPCFollow()
+{
+	Server_CommandNPCFollow();
+}
+
 void ACoopAdventureCharacter::IssueNPCVoiceCommand(const FString& RecognizedText)
 {
 	if (RecognizedText.IsEmpty()) return;
@@ -224,8 +234,51 @@ void ACoopAdventureCharacter::IssueNPCVoiceCommand(const FString& RecognizedText
 	Server_IssueNPCVoiceCommand(RecognizedText);
 }
 
+bool ACoopAdventureCharacter::CanIssueNPCCommand(FString& OutReason) const
+{
+	APlayerController* PC = Cast<APlayerController>(GetController());
+
+	// Host check: on a listen server the host's own PlayerController has
+	// no NetConnection (it's local to this process); every remote
+	// client's PlayerController does.
+	if (!PC || PC->GetNetConnection() != nullptr)
+	{
+		OutReason = TEXT("Only the host can command the NPC.");
+		return false;
+	}
+
+	if (GetCharacterMovement() && GetCharacterMovement()->IsFalling())
+	{
+		OutReason = TEXT("Land and stand still to command the NPC.");
+		return false;
+	}
+
+	if (GetVelocity().SizeSquared() > FMath::Square(StandingStillVelocityThreshold))
+	{
+		OutReason = TEXT("Stand still to command the NPC.");
+		return false;
+	}
+
+	return true;
+}
+
+void ACoopAdventureCharacter::Client_NotifyNPCCommandRejected_Implementation(const FString& Reason)
+{
+	if (GEngine)
+	{
+		GEngine->AddOnScreenDebugMessage(9003, 2.f, FColor::Orange, Reason);
+	}
+}
+
 void ACoopAdventureCharacter::Server_CommandNPCStandIdle_Implementation()
 {
+	FString Reason;
+	if (!CanIssueNPCCommand(Reason))
+	{
+		Client_NotifyNPCCommandRejected(Reason);
+		return;
+	}
+
 	if (ANPCCharacter* NPC = FindTheNPC())
 	{
 		NPC->Server_CommandStandAndLook(this);
@@ -234,14 +287,58 @@ void ACoopAdventureCharacter::Server_CommandNPCStandIdle_Implementation()
 
 void ACoopAdventureCharacter::Server_CommandNPCResumeWander_Implementation()
 {
+	FString Reason;
+	if (!CanIssueNPCCommand(Reason))
+	{
+		Client_NotifyNPCCommandRejected(Reason);
+		return;
+	}
+
 	if (ANPCCharacter* NPC = FindTheNPC())
 	{
 		NPC->Server_CommandResumeWander();
 	}
 }
 
+void ACoopAdventureCharacter::Server_CommandNPCJump_Implementation()
+{
+	FString Reason;
+	if (!CanIssueNPCCommand(Reason))
+	{
+		Client_NotifyNPCCommandRejected(Reason);
+		return;
+	}
+
+	if (ANPCCharacter* NPC = FindTheNPC())
+	{
+		NPC->Server_CommandJump();
+	}
+}
+
+void ACoopAdventureCharacter::Server_CommandNPCFollow_Implementation()
+{
+	FString Reason;
+	if (!CanIssueNPCCommand(Reason))
+	{
+		Client_NotifyNPCCommandRejected(Reason);
+		return;
+	}
+
+	if (ANPCCharacter* NPC = FindTheNPC())
+	{
+		NPC->Server_CommandFollow(this);
+	}
+}
+
 void ACoopAdventureCharacter::Server_IssueNPCVoiceCommand_Implementation(const FString& RecognizedText)
 {
+	FString Reason;
+	if (!CanIssueNPCCommand(Reason))
+	{
+		Client_NotifyNPCCommandRejected(Reason);
+		return;
+	}
+
 	if (ANPCCharacter* NPC = FindTheNPC())
 	{
 		NPC->ProcessVoiceCommandText(RecognizedText, this);

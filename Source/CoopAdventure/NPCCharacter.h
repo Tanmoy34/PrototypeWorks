@@ -14,7 +14,9 @@ enum class ENPCState : uint8
 	wandering,
 	Waiting,
 	MoveAside,
-	Returning
+	Returning,
+	// Commanded to continuously move toward/stay near FollowTarget.
+	Following
 };
 
 // What a recognized voice command (or UI button) should make the NPC do.
@@ -22,7 +24,9 @@ UENUM(BlueprintType)
 enum class ENPCCommandAction : uint8
 {
 	StandAndLook,
-	ResumeWander
+	ResumeWander,
+	Jump,
+	Follow
 };
 
 // One entry the designer can edit in the NPC's Details panel: a list of
@@ -103,6 +107,25 @@ public:
 
 	// Server-authoritative: resume the normal wandering behavior.
 	void Server_CommandResumeWander();
+
+	// -------- Jump / Follow --------
+
+	// Server-authoritative: makes the NPC jump once. Doesn't change
+	// CurrentState - it's a momentary action on top of whatever the NPC
+	// is currently doing (wandering, idle, following, etc.).
+	void Server_CommandJump();
+
+	// Who the NPC is currently following, if CurrentState == Following.
+	// Replicated for the same reason LookAtTarget is.
+	UPROPERTY(ReplicatedUsing = OnRep_FollowTarget, BlueprintReadOnly)
+	AActor* FollowTarget = nullptr;
+
+	UFUNCTION()
+	void OnRep_FollowTarget();
+
+	// Server-authoritative: continuously moves toward and stays near Target
+	// until a different command (stand/wander) is given.
+	void Server_CommandFollow(AActor* Target);
 
 	// -------- Editable voice command list --------
 

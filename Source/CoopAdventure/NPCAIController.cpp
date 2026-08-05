@@ -43,12 +43,36 @@ void ANPCAIController::Tick(float DeltaTime)
 	if (!MyPawn) return;
 
 	// Don't run the stuck-detector while the NPC has been deliberately
-	// told to stand still - it isn't "stuck", it's obeying a command.
+	// told to stand still, or while following (repathing toward the target
+	// is handled separately below, and standing near the target briefly
+	// isn't "stuck").
 	ANPCCharacter* NPC = Cast<ANPCCharacter>(MyPawn);
-	if (NPC && NPC->GetState() == ENPCState::Idle)
+	if (NPC && (NPC->GetState() == ENPCState::Idle || NPC->GetState() == ENPCState::Following))
 	{
 		StuckTimer = 0.f;
 		LastLocation = MyPawn->GetActorLocation();
+
+		if (NPC->GetState() == ENPCState::Following)
+		{
+			FollowRepathTimer += DeltaTime;
+
+			if (FollowRepathTimer >= FollowRepathInterval)
+			{
+				FollowRepathTimer = 0.f;
+
+				if (NPC->FollowTarget)
+				{
+					MoveToActor(NPC->FollowTarget, FollowAcceptanceRadius);
+				}
+				else
+				{
+					// Target went away (disconnected, destroyed, etc.) -
+					// don't just stand there forever.
+					CommandResumeWander();
+				}
+			}
+		}
+
 		return;
 	}
 
@@ -143,6 +167,20 @@ void ANPCAIController::CommandResumeWander()
 	NPC->SetState(ENPCState::wandering);
 
 	MoveToRandomLocation();
+}
+
+void ANPCAIController::CommandFollow(AActor* Target)
+{
+	if (!HasAuthority()) return;
+
+	GetWorld()->GetTimerManager().ClearTimer(WanderTimer);
+	StuckTimer = 0.f;
+	FollowRepathTimer = 0.f;
+
+	if (Target)
+	{
+		MoveToActor(Target, FollowAcceptanceRadius);
+	}
 }
 
 void ANPCAIController::OnMoveCompleted(FAIRequestID RequestID, const FPathFollowingResult& Result)
