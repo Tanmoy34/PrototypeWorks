@@ -147,14 +147,24 @@ bool UVoiceCommandComponent::InitializeVosk()
 	CleanModelDirectory.RemoveFromStart(TEXT("\""));
 	CleanModelDirectory.RemoveFromEnd(TEXT("\""));
 
+	// If someone pastes an absolute Windows path in here (starts with a
+	// drive letter like "D:", or is already rooted), respect it as-is for
+	// backwards compatibility - but the normal, portable case is a
+	// project-relative path, resolved against wherever THIS machine's
+	// project actually lives rather than trusting a string that was only
+	// ever true on the machine that saved the Blueprint.
+	FString ResolvedModelDirectory = FPaths::IsRelative(CleanModelDirectory)
+		? FPaths::ConvertRelativePathToFull(FPaths::Combine(FPaths::ProjectDir(), CleanModelDirectory))
+		: CleanModelDirectory;
+
 	p_vosk_set_log_level(0); // was -1 (silent) - turned up so Vosk prints its own diagnostic if the model fails to load
 
-	UE_LOG(LogTemp, Log, TEXT("VoiceCommandComponent: loading Vosk model from \"%s\""), *CleanModelDirectory);
+	UE_LOG(LogTemp, Log, TEXT("VoiceCommandComponent: loading Vosk model from \"%s\" (ModelDirectory=\"%s\")"), *ResolvedModelDirectory, *CleanModelDirectory);
 
-	Model = p_vosk_model_new(TCHAR_TO_UTF8(*CleanModelDirectory));
+	Model = p_vosk_model_new(TCHAR_TO_UTF8(*ResolvedModelDirectory));
 	if (!Model)
 	{
-		UE_LOG(LogTemp, Error, TEXT("VoiceCommandComponent: failed to load Vosk model at %s"), *CleanModelDirectory);
+		UE_LOG(LogTemp, Error, TEXT("VoiceCommandComponent: failed to load Vosk model at %s"), *ResolvedModelDirectory);
 		return false;
 	}
 

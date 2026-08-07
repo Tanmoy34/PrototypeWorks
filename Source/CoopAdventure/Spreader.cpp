@@ -72,6 +72,15 @@ void ASpreader::PickpSprader(ACoopAdventureCharacter* PickingCharacter)
 		return;
 	}
 
+	// Clients aren't allowed to pick the Spreader up - only the host. Both
+	// entry points (overlap trigger and line-trace Intract) funnel through
+	// here, so checking it in one place covers both.
+	if (!PickingCharacter->IsHostPlayer())
+	{
+		UE_LOG(LogTemp, Warning, TEXT("PickpSprader: rejected - %s is not the host"), *PickingCharacter->GetName());
+		return;
+	}
+
 	UE_LOG(LogTemp, Warning, TEXT("PickpSprader: %s picked up %s"), *PickingCharacter->GetName(), *GetName());
 
 	// Hand the mesh asset to the character - it replicates this to every

@@ -37,6 +37,13 @@ class ACoopAdventureCharacter : public ACharacter
 	/** Shown once a Spreader has been picked up. Attached to the "HandGrip_L" socket on the character mesh, hidden until then. */
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Components", meta = (AllowPrivateAccess = "true"))
 	USkeletalMeshComponent* HeldSpreaderMesh;
+
+	/** Collision volumes on the held Spreader mesh's arms, for later hit/collision detection while it's equipped. */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Components", meta = (AllowPrivateAccess = "true"))
+	class USphereComponent* ArmBottomCollision;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Components", meta = (AllowPrivateAccess = "true"))
+	class USphereComponent* ArmTopCollision;
 	
 protected:
 
@@ -140,6 +147,9 @@ public:
 
 	/** Server-only: gives this character the Spreader mesh in-hand and sets bSpreaderPicked. Called by ASpreader::PickpSprader once it has authoritatively decided this character picked it up - don't call this directly from client code. */
 	void PickUpSpreaderMesh(USkeletalMesh* InMesh);
+
+	/** True if this character belongs to the host (listen server) rather than a remote client. A listen server's own PlayerController has no NetConnection (it's local); every remote client's does - that's what's checked here. Used to gate both NPC commands and Spreader pickup to the host only. */
+	bool IsHostPlayer() const;
 
 protected:
 

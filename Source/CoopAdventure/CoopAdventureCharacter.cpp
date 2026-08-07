@@ -16,6 +16,7 @@
 #include "VoiceCommandComponent.h"
 #include "Kismet/GameplayStatics.h"
 #include "Net/UnrealNetwork.h"
+#include "Components/SphereComponent.h"
 
 ACoopAdventureCharacter::ACoopAdventureCharacter()
 {
@@ -57,6 +58,23 @@ ACoopAdventureCharacter::ACoopAdventureCharacter()
 	HeldSpreaderMesh->SetupAttachment(GetMesh(), TEXT("HandGrip_L"));
 	HeldSpreaderMesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 	HeldSpreaderMesh->SetVisibility(false);
+
+	// Arm collision volumes on the held Spreader, for later collision/hit
+	// detection while it's equipped. Not wired to any gameplay logic yet -
+	// just positioned and overlap-ready.
+	ArmBottomCollision = CreateDefaultSubobject<USphereComponent>(TEXT("ArmBottomCollision"));
+	ArmBottomCollision->SetupAttachment(HeldSpreaderMesh, TEXT("arm_bottomSocket"));
+	ArmBottomCollision->InitSphereRadius(8.f);
+	ArmBottomCollision->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
+	ArmBottomCollision->SetCollisionProfileName(TEXT("OverlapAllDynamic"));
+	ArmBottomCollision->SetGenerateOverlapEvents(true);
+
+	ArmTopCollision = CreateDefaultSubobject<USphereComponent>(TEXT("ArmTopCollision"));
+	ArmTopCollision->SetupAttachment(HeldSpreaderMesh, TEXT("arm_topSocket"));
+	ArmTopCollision->InitSphereRadius(8.f);
+	ArmTopCollision->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
+	ArmTopCollision->SetCollisionProfileName(TEXT("OverlapAllDynamic"));
+	ArmTopCollision->SetGenerateOverlapEvents(true);
 
 	// Note: The skeletal mesh and anim blueprint references on the Mesh component (inherited from Character) 
 	// are set in the derived blueprint asset named ThirdPersonCharacter (to avoid direct content references in C++)
@@ -284,14 +302,18 @@ void ACoopAdventureCharacter::IssueNPCVoiceCommand(const FString& RecognizedText
 	Server_IssueNPCVoiceCommand(RecognizedText);
 }
 
-bool ACoopAdventureCharacter::CanIssueNPCCommand(FString& OutReason) const
+bool ACoopAdventureCharacter::IsHostPlayer() const
 {
 	APlayerController* PC = Cast<APlayerController>(GetController());
 
-	// Host check: on a listen server the host's own PlayerController has
-	// no NetConnection (it's local to this process); every remote
-	// client's PlayerController does.
-	if (!PC || PC->GetNetConnection() != nullptr)
+	// A listen server's own PlayerController has no NetConnection (it's
+	// local to this process); every remote client's PlayerController does.
+	return PC && PC->GetNetConnection() == nullptr;
+}
+
+bool ACoopAdventureCharacter::CanIssueNPCCommand(FString& OutReason) const
+{
+	if (!IsHostPlayer())
 	{
 		OutReason = TEXT("Only the host can command the NPC.");
 		return false;

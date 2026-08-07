@@ -62,10 +62,16 @@ protected:
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 
 public:
-	// Folder containing the unzipped Vosk model (e.g.
-	// Content/../VoskModels/vosk-model-small-en-us-0.15). Set per-project.
+	// Folder containing the unzipped Vosk model, RELATIVE to the project
+	// root (same folder your .uproject file sits in) - NOT an absolute
+	// path. e.g. leave this as the default "VoskModels/vosk-model-small-en-us-0.15"
+	// if that's where you put it. Resolved at runtime via FPaths::ProjectDir(),
+	// same as the Vosk DLL itself, so this Blueprint value works unmodified
+	// on every teammate's machine regardless of what drive/folder they
+	// cloned the project into - an absolute path here would only work on
+	// whichever PC's drive layout happened to match yours.
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Voice Command")
-	FString ModelDirectory;
+	FString ModelDirectory = TEXT("VoskModels/vosk-model-small-en-us-0.15");
 
 	// Optional. Plays the instant V is pressed, so the player has a clear
 	// cue that listening has started. Any short Sound Wave/Sound Cue works.
