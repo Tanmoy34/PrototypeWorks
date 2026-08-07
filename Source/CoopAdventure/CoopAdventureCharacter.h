@@ -12,6 +12,8 @@ class USpringArmComponent;
 class UCameraComponent;
 class UInputAction;
 struct FInputActionValue;
+class ASpreader;
+class USkeletalMesh;
 
 DECLARE_LOG_CATEGORY_EXTERN(LogTemplateCharacter, Log, All);
 
@@ -31,6 +33,10 @@ class ACoopAdventureCharacter : public ACharacter
 	/** Follow camera */
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Components", meta = (AllowPrivateAccess = "true"))
 	UCameraComponent* FollowCamera;
+
+	/** Shown once a Spreader has been picked up. Attached to the "HandGrip_L" socket on the character mesh, hidden until then. */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Components", meta = (AllowPrivateAccess = "true"))
+	USkeletalMeshComponent* HeldSpreaderMesh;
 	
 protected:
 
@@ -126,6 +132,15 @@ public:
 	UFUNCTION(BlueprintCallable, Category="Voice Command")
 	void IssueNPCVoiceCommand(const FString& RecognizedText);
 
+	// -------- Spreader pickup --------
+
+	/** True once this character has picked up a Spreader. Replicated - read this from your AnimBP to drive a hold pose. */
+	UPROPERTY(Replicated, BlueprintReadOnly, Category = "Pickup")
+	bool bSpreaderPicked = false;
+
+	/** Server-only: gives this character the Spreader mesh in-hand and sets bSpreaderPicked. Called by ASpreader::PickpSprader once it has authoritatively decided this character picked it up - don't call this directly from client code. */
+	void PickUpSpreaderMesh(USkeletalMesh* InMesh);
+
 protected:
 
 	UFUNCTION(Server, Reliable)
@@ -166,6 +181,26 @@ protected:
 	// so we just grab the first one that exists rather than tracking a
 	// reference. Server-only.
 	class ANPCCharacter* FindTheNPC() const;
+
+	// -------- Spreader pickup (internals) --------
+
+	// Mesh asset copied off the Spreader when picked up. Replicated so
+	// HeldSpreaderMesh can show the right mesh on every client, independent
+	// of bSpreaderPicked's own replication (don't rely on both arriving in
+	// the same order - this RepNotify carries all the visual work).
+	UPROPERTY(ReplicatedUsing = OnRep_PickedSpreaderMesh)
+	USkeletalMesh* PickedSpreaderMeshAsset;
+
+	UFUNCTION()
+	void OnRep_PickedSpreaderMesh();
+
+	// Routes a line-trace Intract pickup through the server, since Intract()
+	// itself runs locally on whichever machine pressed the interact key, and
+	// only the server may authoritatively destroy/replicate the Spreader.
+	UFUNCTION(Server, Reliable)
+	void Server_PickUpSpreader(ASpreader* TargetSpreader);
+
+	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
 
 public:
 

@@ -8,16 +8,16 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="1cc0744d-c5c0-4e46-b1e1-e806eb9cdab8" name="Changes" comment="">
-      <change afterPath="$PROJECT_DIR$/Source/CoopAdventure/VoiceCommandComponent.cpp" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/Source/CoopAdventure/VoiceCommandComponent.h" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/.idea.CoopAdventure.dir/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/.idea.CoopAdventure.dir/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Source/CoopAdventure/CoopAdventure.Build.cs" beforeDir="false" afterPath="$PROJECT_DIR$/Source/CoopAdventure/CoopAdventure.Build.cs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Source/CoopAdventure/CoopAdventureCharacter.cpp" beforeDir="false" afterPath="$PROJECT_DIR$/Source/CoopAdventure/CoopAdventureCharacter.cpp" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Source/CoopAdventure/CoopAdventureCharacter.h" beforeDir="false" afterPath="$PROJECT_DIR$/Source/CoopAdventure/CoopAdventureCharacter.h" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Source/CoopAdventure/NPCAIController.cpp" beforeDir="false" afterPath="$PROJECT_DIR$/Source/CoopAdventure/NPCAIController.cpp" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Source/CoopAdventure/NPCAIController.h" beforeDir="false" afterPath="$PROJECT_DIR$/Source/CoopAdventure/NPCAIController.h" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Source/CoopAdventure/NPCCharacter.cpp" beforeDir="false" afterPath="$PROJECT_DIR$/Source/CoopAdventure/NPCCharacter.cpp" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Source/CoopAdventure/NPCCharacter.h" beforeDir="false" afterPath="$PROJECT_DIR$/Source/CoopAdventure/NPCCharacter.h" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/Content/Characters/Mannequins/Anims/Unarmed/ABP_Unarmed.uasset" beforeDir="false" afterPath="$PROJECT_DIR$/Content/Characters/Mannequins/Anims/Unarmed/ABP_Unarmed.uasset" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/Content/Characters/Mannequins/Meshes/SK_Mannequin.uasset" beforeDir="false" afterPath="$PROJECT_DIR$/Content/Characters/Mannequins/Meshes/SK_Mannequin.uasset" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/Content/MyStuff/Assest/SpederFinalMesh.uasset" beforeDir="false" afterPath="$PROJECT_DIR$/Content/MyStuff/Assest/SpederFinalMesh.uasset" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/Content/MyStuff/Assest/_16600_Hydraulic_Rescue_Spreader_v1default.uasset" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/Content/ThirdPerson/Blueprints/PlayerCharecterBP.uasset" beforeDir="false" afterPath="$PROJECT_DIR$/Content/ThirdPerson/Blueprints/PlayerCharecterBP.uasset" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/Source/CoopAdventure/Spreader.cpp" beforeDir="false" afterPath="$PROJECT_DIR$/Source/CoopAdventure/Spreader.cpp" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/Source/CoopAdventure/Spreader.h" beforeDir="false" afterPath="$PROJECT_DIR$/Source/CoopAdventure/Spreader.h" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/Source/CoopAdventure/VoiceCommandComponent.cpp" beforeDir="false" afterPath="$PROJECT_DIR$/Source/CoopAdventure/VoiceCommandComponent.cpp" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/Source/CoopAdventure/VoiceCommandComponent.h" beforeDir="false" afterPath="$PROJECT_DIR$/Source/CoopAdventure/VoiceCommandComponent.h" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -230,6 +230,7 @@
       <workItem from="1784879504524" duration="510000" />
       <workItem from="1785830263384" duration="877000" />
       <workItem from="1785831739681" duration="296000" />
+      <workItem from="1786075813618" duration="1053000" />
     </task>
     <servers />
   </component>

@@ -15,6 +15,7 @@
 #include "NPCCharacter.h"
 #include "VoiceCommandComponent.h"
 #include "Kismet/GameplayStatics.h"
+#include "Net/UnrealNetwork.h"
 
 ACoopAdventureCharacter::ACoopAdventureCharacter()
 {
@@ -49,6 +50,13 @@ ACoopAdventureCharacter::ACoopAdventureCharacter()
 	FollowCamera = CreateDefaultSubobject<UCameraComponent>(TEXT("FollowCamera"));
 	FollowCamera->SetupAttachment(CameraBoom, USpringArmComponent::SocketName);
 	FollowCamera->bUsePawnControlRotation = false;
+
+	// Held-item mesh for picked-up Spreaders. Hidden and empty until
+	// PickUpSpreaderMesh gives it something to show.
+	HeldSpreaderMesh = CreateDefaultSubobject<USkeletalMeshComponent>(TEXT("HeldSpreaderMesh"));
+	HeldSpreaderMesh->SetupAttachment(GetMesh(), TEXT("HandGrip_L"));
+	HeldSpreaderMesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+	HeldSpreaderMesh->SetVisibility(false);
 
 	// Note: The skeletal mesh and anim blueprint references on the Mesh component (inherited from Character) 
 	// are set in the derived blueprint asset named ThirdPersonCharacter (to avoid direct content references in C++)
@@ -198,11 +206,53 @@ void ACoopAdventureCharacter::Intract()
 
 		if (Spreader)
 		{
-			Spreader->PickpSprader();
+			// Intract() runs locally on whichever machine pressed the key,
+			// but only the server may destroy/replicate the Spreader - hand
+			// off to a Server RPC rather than calling PickpSprader() here.
+			Server_PickUpSpreader(Spreader);
 		}
 	}
 
 	
+}
+
+// -------- Spreader pickup --------
+
+void ACoopAdventureCharacter::Server_PickUpSpreader_Implementation(ASpreader* TargetSpreader)
+{
+	if (TargetSpreader)
+	{
+		TargetSpreader->PickpSprader(this);
+	}
+}
+
+void ACoopAdventureCharacter::PickUpSpreaderMesh(USkeletalMesh* InMesh)
+{
+	PickedSpreaderMeshAsset = InMesh;
+	bSpreaderPicked = true;
+
+	// This only ever runs on the server (called from ASpreader::PickpSprader,
+	// which is itself authority-gated). RepNotifies don't fire locally when
+	// the server sets a property itself, so apply the visual change here too
+	// - remote clients get it via the replicated OnRep_PickedSpreaderMesh.
+	OnRep_PickedSpreaderMesh();
+}
+
+void ACoopAdventureCharacter::OnRep_PickedSpreaderMesh()
+{
+	if (HeldSpreaderMesh)
+	{
+		HeldSpreaderMesh->SetSkeletalMesh(PickedSpreaderMeshAsset);
+		HeldSpreaderMesh->SetVisibility(PickedSpreaderMeshAsset != nullptr, true);
+	}
+}
+
+void ACoopAdventureCharacter::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
+{
+	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
+
+	DOREPLIFETIME(ACoopAdventureCharacter, bSpreaderPicked);
+	DOREPLIFETIME(ACoopAdventureCharacter, PickedSpreaderMeshAsset);
 }
 
 // -------- NPC commands --------
