@@ -105,14 +105,24 @@ void ACoopAdventureCharacter::SetupPlayerInputComponent(UInputComponent* PlayerI
 		// Looking
 		EnhancedInputComponent->BindAction(LookAction, ETriggerEvent::Triggered, this, &ACoopAdventureCharacter::Look);
 
-		EnhancedInputComponent->BindAction(EntractAction, ETriggerEvent::Started, this, &ACoopAdventureCharacter::Intract);
+		// Interact is unbound for now - EntractAction was mapped to "E" in
+		// the Input Mapping Context, which collides with BendAction's E
+		// (positive) binding, so pressing E to bend was also firing
+		// Intract(). Re-enable this once EntractAction is moved off E in
+		// the mapping context (Intract() itself is untouched, still
+		// callable from Blueprint/UI in the meantime).
+		// EnhancedInputComponent->BindAction(EntractAction, ETriggerEvent::Started, this, &ACoopAdventureCharacter::Intract);
 
 		// Voice: hold V to talk, release to send the command off for recognition.
 		EnhancedInputComponent->BindAction(VoiceActivateAction, ETriggerEvent::Started, this, &ACoopAdventureCharacter::OnVoiceActivateStarted);
 		EnhancedInputComponent->BindAction(VoiceActivateAction, ETriggerEvent::Completed, this, &ACoopAdventureCharacter::OnVoiceActivateCompleted);
 
-		// Deform: Y toggles Deform Mode while touching a car door with the spreader.
+		// Deform: Y enters Deform Mode while touching a car door with the spreader; R exits it.
 		EnhancedInputComponent->BindAction(DeformActivateAction, ETriggerEvent::Started, this, &ACoopAdventureCharacter::OnDeformActivateStarted);
+		EnhancedInputComponent->BindAction(ExitDeformAction, ETriggerEvent::Started, this, &ACoopAdventureCharacter::OnExitDeformActivateStarted);
+
+		// Q/E bend the car's affected bones while in Deform Mode; ignored otherwise.
+		EnhancedInputComponent->BindAction(BendAction, ETriggerEvent::Triggered, this, &ACoopAdventureCharacter::OnBendInput);
 	}
 	else
 	{
@@ -162,7 +172,31 @@ void ACoopAdventureCharacter::OnDeformActivateStarted(const FInputActionValue& V
 {
 	if (!IsLocallyControlled()) return;
 
-	Server_ToggleDeformMode();
+	Server_EnterDeformMode();
+}
+
+void ACoopAdventureCharacter::OnExitDeformActivateStarted(const FInputActionValue& Value)
+{
+	if (!IsLocallyControlled()) return;
+
+	Server_ExitDeformMode();
+}
+
+void ACoopAdventureCharacter::OnBendInput(const FInputActionValue& Value)
+{
+	if (!IsLocallyControlled() || !bIsDeforming)
+	{
+		return;
+	}
+
+	// TouchingCar is only ever set server-side, and only the host can ever
+	// reach bIsDeforming in the first place (see Server_EnterDeformMode),
+	// so this is already running with authority - no RPC hop needed to
+	// reach the car.
+	if (TouchingCar)
+	{
+		TouchingCar->ApplyDeformBend(Value.Get<float>());
+	}
 }
 
 void ACoopAdventureCharacter::DoMove(float Right, float Forward)
@@ -192,6 +226,10 @@ void ACoopAdventureCharacter::DoMove(float Right, float Forward)
 
 void ACoopAdventureCharacter::DoLook(float Yaw, float Pitch)
 {
+	// Mouse always drives the camera now, Deform Mode included - the first
+	// person camera being unable to look around while deforming was
+	// disorienting, so bending was moved off the mouse and onto Q/E
+	// (see OnBendInput) instead.
 	if (GetController() != nullptr)
 	{
 		// add yaw and pitch input to controller
@@ -321,19 +359,10 @@ void ACoopAdventureCharacter::ClearTouchingCar(ACar* InCar)
 	// it back off.
 }
 
-void ACoopAdventureCharacter::Server_ToggleDeformMode_Implementation()
+void ACoopAdventureCharacter::Server_EnterDeformMode_Implementation()
 {
 	if (bIsDeforming)
 	{
-		bIsDeforming = false;
-
-		// Give movement back.
-		if (UCharacterMovementComponent* MoveComp = GetCharacterMovement())
-		{
-			MoveComp->SetMovementMode(MOVE_Walking);
-		}
-
-		UpdateCameraForDeformMode();
 		return;
 	}
 
@@ -352,11 +381,29 @@ void ACoopAdventureCharacter::Server_ToggleDeformMode_Implementation()
 	// (DoMove/DoJumpStart/etc.) isn't enough on its own since residual
 	// velocity keeps carrying the character forward. Disabling movement
 	// zeroes that out and stops it from responding to anything (including
-	// external forces) until we restore MOVE_Walking above.
+	// external forces) until we restore MOVE_Walking below.
 	if (UCharacterMovementComponent* MoveComp = GetCharacterMovement())
 	{
 		MoveComp->StopMovementImmediately();
 		MoveComp->DisableMovement();
+	}
+
+	UpdateCameraForDeformMode();
+}
+
+void ACoopAdventureCharacter::Server_ExitDeformMode_Implementation()
+{
+	if (!bIsDeforming)
+	{
+		return;
+	}
+
+	bIsDeforming = false;
+
+	// Give movement back.
+	if (UCharacterMovementComponent* MoveComp = GetCharacterMovement())
+	{
+		MoveComp->SetMovementMode(MOVE_Walking);
 	}
 
 	UpdateCameraForDeformMode();

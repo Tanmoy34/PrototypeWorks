@@ -4,7 +4,7 @@
 #include "Car.h"
 #include "Components/BoxComponent.h"
 #include "Components/SphereComponent.h"
-#include "Components/SkeletalMeshComponent.h"
+#include "Components/PoseableMeshComponent.h"
 #include "CoopAdventureCharacter.h"
 #include "Net/UnrealNetwork.h"
 
@@ -22,7 +22,7 @@ ACar::ACar()
 	Root = CreateDefaultSubobject<USceneComponent>("Root");
 	RootComponent = Root;
 
-	CarMesh = CreateDefaultSubobject<USkeletalMeshComponent>("CarMesh");
+	CarMesh = CreateDefaultSubobject<UPoseableMeshComponent>("CarMesh");
 	CarMesh->SetupAttachment(Root);
 
 	// Two doors, two collisions. Placeholder sizes/offsets, mirrored left vs
@@ -173,10 +173,83 @@ void ACar::StartDemeshing(const FVector& ImpactLocation)
 
 	AffectedBones = FindNearestBones(ImpactLocation, NumBonesToAffect);
 
+	// Fresh bend bookkeeping for this pass: remember where each affected
+	// bone started out so ApplyDeformBend has a rest position to offset
+	// from, work out how strongly each one should bend relative to the
+	// others, and clear any leftover offsets from a previous demeshing.
+	// FindNearestBones already returns AffectedBones sorted nearest-first,
+	// so index == rank here.
+	BoneRestLocations.Reset();
+	BoneBendWeights.Reset();
+	BoneBendOffsets.Reset();
+	for (int32 i = 0; i < AffectedBones.Num(); ++i)
+	{
+		const FName& BoneName = AffectedBones[i];
+		BoneRestLocations.Add(BoneName, CarMesh->GetBoneLocation(BoneName, EBoneSpaces::WorldSpace));
+		BoneBendWeights.Add(BoneName, FMath::Pow(BendFalloff, static_cast<float>(i)));
+	}
+
 	UE_LOG(LogTemp, Warning, TEXT("Car demeshing: found %d nearby bone(s)"), AffectedBones.Num());
 	for (const FName& BoneName : AffectedBones)
 	{
 		UE_LOG(LogTemp, Warning, TEXT("Car demeshing: affected bone -> %s"), *BoneName.ToString());
+	}
+}
+
+void ACar::ApplyDeformBend(float BendInput)
+{
+	if (!HasAuthority() || !CarMesh || AffectedBones.Num() == 0 || FMath::IsNearlyZero(BendInput))
+	{
+		return;
+	}
+
+	// Single prying axis now (Q/E), rather than the two mouse axes - pull
+	// along the car's own right axis so it reads correctly regardless of
+	// which way the car is facing in the level.
+	const FVector BendAxis = GetActorRightVector();
+	const FVector BendStep = BendAxis * BendInput * BendingMagnitude;
+
+	TArray<FName> BoneNames;
+	TArray<FVector> BoneLocations;
+	BoneNames.Reserve(AffectedBones.Num());
+	BoneLocations.Reserve(AffectedBones.Num());
+
+	for (const FName& BoneName : AffectedBones)
+	{
+		const FVector* RestLocation = BoneRestLocations.Find(BoneName);
+		if (!RestLocation)
+		{
+			continue;
+		}
+
+		const float* Weight = BoneBendWeights.Find(BoneName);
+		const float BoneWeight = Weight ? *Weight : 1.f;
+
+		FVector& Offset = BoneBendOffsets.FindOrAdd(BoneName);
+		Offset += BendStep * BoneWeight;
+
+		if (MaxBendDistance > 0.f)
+		{
+			Offset = Offset.GetClampedToMaxSize(MaxBendDistance);
+		}
+
+		BoneNames.Add(BoneName);
+		BoneLocations.Add(*RestLocation + Offset);
+	}
+
+	Multicast_ApplyBoneBend(BoneNames, BoneLocations);
+}
+
+void ACar::Multicast_ApplyBoneBend_Implementation(const TArray<FName>& BoneNames, const TArray<FVector>& BoneLocations)
+{
+	if (!CarMesh)
+	{
+		return;
+	}
+
+	for (int32 i = 0; i < BoneNames.Num(); ++i)
+	{
+		CarMesh->SetBoneLocationByName(BoneNames[i], BoneLocations[i], EBoneSpaces::WorldSpace);
 	}
 }
 

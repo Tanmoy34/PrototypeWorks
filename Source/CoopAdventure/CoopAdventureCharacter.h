@@ -46,7 +46,7 @@ class ACoopAdventureCharacter : public ACharacter
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Components", meta = (AllowPrivateAccess = "true"))
 	class USphereComponent* ArmTopCollision;
 
-	/** First-person camera, attached to the head socket. Inactive until Deform Mode starts - only the host ever switches to it (see Server_ToggleDeformMode). */
+	/** First-person camera, attached to the head socket. Inactive until Deform Mode starts - only the host ever switches to it (see Server_EnterDeformMode). */
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Components", meta = (AllowPrivateAccess = "true"))
 	UCameraComponent* FirstPersonCamera;
 
@@ -83,6 +83,14 @@ protected:
 	UPROPERTY(EditAnywhere, Category="Input")
 	UInputAction* DeformActivateAction;
 
+	/** Bends the affected car bones while in Deform Mode. Should be a 1D axis Input Action bound so "Q" gives a negative value and "E" gives a positive value in the Input Action asset - camera look stays on the mouse, this is what Q/E drive instead. */
+	UPROPERTY(EditAnywhere, Category="Input")
+	UInputAction* BendAction;
+
+	/** Exits Deform Mode and restores normal control. Bind this to the "R" key in the Input Action asset. */
+	UPROPERTY(EditAnywhere, Category="Input")
+	UInputAction* ExitDeformAction;
+
 public:
 
 	/** Constructor */
@@ -107,8 +115,14 @@ protected:
 	/** V released: stop listening and process whatever was heard */
 	void OnVoiceActivateCompleted(const FInputActionValue& Value);
 
-	/** Y pressed: toggle Deform Mode (only takes effect while touching a car door with the spreader equipped) */
+	/** Y pressed: enter Deform Mode (only takes effect while touching a car door with the spreader equipped) */
 	void OnDeformActivateStarted(const FInputActionValue& Value);
+
+	/** R pressed: exit Deform Mode and restore normal control */
+	void OnExitDeformActivateStarted(const FInputActionValue& Value);
+
+	/** Q/E held: bends the car's affected bones while in Deform Mode. Ignored otherwise. */
+	void OnBendInput(const FInputActionValue& Value);
 
 public:
 	
@@ -171,7 +185,7 @@ public:
 	UPROPERTY(Replicated, BlueprintReadOnly, Category = "Deformation")
 	bool bIsDeforming = false;
 
-	/** Called by ACar when this character's spreader-arm colliders enter/leave its door collision (server-only). Not meant to be called from anywhere else. Note: leaving the collision does NOT exit Deform Mode by itself - only Server_ToggleDeformMode (the Y key) does that, so control stays frozen until you explicitly toggle it off. */
+	/** Called by ACar when this character's spreader-arm colliders enter/leave its door collision (server-only). Not meant to be called from anywhere else. Note: leaving the collision does NOT exit Deform Mode by itself - only Server_ExitDeformMode (the R key) does that, so control stays frozen until you explicitly exit. */
 	void SetTouchingCar(ACar* InCar);
 	void ClearTouchingCar(ACar* InCar);
 
@@ -242,11 +256,16 @@ protected:
 	UPROPERTY()
 	ACar* TouchingCar = nullptr;
 
-	// Server-side: flips bIsDeforming on/off. Only succeeds while
-	// TouchingCar is set (i.e. the spreader is actually on a door) -
-	// otherwise the request is rejected and the requesting client is told why.
+	// Server-side: turns Deform Mode on. Only succeeds while TouchingCar is
+	// set (i.e. the spreader is actually on a door) - otherwise the request
+	// is rejected and the requesting client is told why. Bound to Y.
 	UFUNCTION(Server, Reliable)
-	void Server_ToggleDeformMode();
+	void Server_EnterDeformMode();
+
+	// Server-side: turns Deform Mode off and restores normal movement/
+	// camera. Bound to R. Safe to call even if not currently deforming.
+	UFUNCTION(Server, Reliable)
+	void Server_ExitDeformMode();
 
 	// Generic "your request didn't go through" notice, shown only to the
 	// client that made the request.
@@ -255,9 +274,10 @@ protected:
 
 	// Locally-controlled-only: swaps between FollowCamera and
 	// FirstPersonCamera based on the current value of bIsDeforming. Called
-	// right after bIsDeforming changes in Server_ToggleDeformMode - for a
-	// listen server host this affects their view immediately, since their
-	// own Character actor IS the authoritative one running this code.
+	// right after bIsDeforming changes in Server_EnterDeformMode/
+	// Server_ExitDeformMode - for a listen server host this affects their
+	// view immediately, since their own Character actor IS the
+	// authoritative one running this code.
 	void UpdateCameraForDeformMode();
 
 	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
