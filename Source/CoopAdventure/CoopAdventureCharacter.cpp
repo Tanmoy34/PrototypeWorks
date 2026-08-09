@@ -12,6 +12,7 @@
 #include "InputActionValue.h"
 #include "CoopAdventure.h"
 #include "Spreader.h"
+#include "Car.h"
 #include "NPCCharacter.h"
 #include "VoiceCommandComponent.h"
 #include "Kismet/GameplayStatics.h"
@@ -51,6 +52,7 @@ ACoopAdventureCharacter::ACoopAdventureCharacter()
 	FollowCamera = CreateDefaultSubobject<UCameraComponent>(TEXT("FollowCamera"));
 	FollowCamera->SetupAttachment(CameraBoom, USpringArmComponent::SocketName);
 	FollowCamera->bUsePawnControlRotation = false;
+	FollowCamera->SetActive(true);
 
 	// Held-item mesh for picked-up Spreaders. Hidden and empty until
 	// PickUpSpreaderMesh gives it something to show.
@@ -75,6 +77,13 @@ ACoopAdventureCharacter::ACoopAdventureCharacter()
 	ArmTopCollision->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
 	ArmTopCollision->SetCollisionProfileName(TEXT("OverlapAllDynamic"));
 	ArmTopCollision->SetGenerateOverlapEvents(true);
+
+	// First-person camera for Deform Mode. Attached to the head socket,
+	// starts inactive - FollowCamera (third person) is the default view.
+	FirstPersonCamera = CreateDefaultSubobject<UCameraComponent>(TEXT("FirstPersonCamera"));
+	FirstPersonCamera->SetupAttachment(GetMesh(), HeadSocketName);
+	FirstPersonCamera->bUsePawnControlRotation = true;
+	FirstPersonCamera->SetActive(false);
 
 	// Note: The skeletal mesh and anim blueprint references on the Mesh component (inherited from Character) 
 	// are set in the derived blueprint asset named ThirdPersonCharacter (to avoid direct content references in C++)
@@ -101,6 +110,9 @@ void ACoopAdventureCharacter::SetupPlayerInputComponent(UInputComponent* PlayerI
 		// Voice: hold V to talk, release to send the command off for recognition.
 		EnhancedInputComponent->BindAction(VoiceActivateAction, ETriggerEvent::Started, this, &ACoopAdventureCharacter::OnVoiceActivateStarted);
 		EnhancedInputComponent->BindAction(VoiceActivateAction, ETriggerEvent::Completed, this, &ACoopAdventureCharacter::OnVoiceActivateCompleted);
+
+		// Deform: Y toggles Deform Mode while touching a car door with the spreader.
+		EnhancedInputComponent->BindAction(DeformActivateAction, ETriggerEvent::Started, this, &ACoopAdventureCharacter::OnDeformActivateStarted);
 	}
 	else
 	{
@@ -128,7 +140,7 @@ void ACoopAdventureCharacter::Look(const FInputActionValue& Value)
 
 void ACoopAdventureCharacter::OnVoiceActivateStarted(const FInputActionValue& Value)
 {
-	if (!IsLocallyControlled()) return;
+	if (!IsLocallyControlled() || bIsDeforming) return;
 
 	if (UVoiceCommandComponent* VoiceComp = FindComponentByClass<UVoiceCommandComponent>())
 	{
@@ -138,7 +150,7 @@ void ACoopAdventureCharacter::OnVoiceActivateStarted(const FInputActionValue& Va
 
 void ACoopAdventureCharacter::OnVoiceActivateCompleted(const FInputActionValue& Value)
 {
-	if (!IsLocallyControlled()) return;
+	if (!IsLocallyControlled() || bIsDeforming) return;
 
 	if (UVoiceCommandComponent* VoiceComp = FindComponentByClass<UVoiceCommandComponent>())
 	{
@@ -146,8 +158,20 @@ void ACoopAdventureCharacter::OnVoiceActivateCompleted(const FInputActionValue& 
 	}
 }
 
+void ACoopAdventureCharacter::OnDeformActivateStarted(const FInputActionValue& Value)
+{
+	if (!IsLocallyControlled()) return;
+
+	Server_ToggleDeformMode();
+}
+
 void ACoopAdventureCharacter::DoMove(float Right, float Forward)
 {
+	if (bIsDeforming)
+	{
+		return;
+	}
+
 	if (GetController() != nullptr)
 	{
 		// find out which way is forward
@@ -178,12 +202,22 @@ void ACoopAdventureCharacter::DoLook(float Yaw, float Pitch)
 
 void ACoopAdventureCharacter::DoJumpStart()
 {
+	if (bIsDeforming)
+	{
+		return;
+	}
+
 	// signal the character to jump
 	Jump();
 }
 
 void ACoopAdventureCharacter::DoJumpEnd()
 {
+	if (bIsDeforming)
+	{
+		return;
+	}
+
 	// signal the character to stop jumping
 	StopJumping();
 }
@@ -265,12 +299,98 @@ void ACoopAdventureCharacter::OnRep_PickedSpreaderMesh()
 	}
 }
 
+// -------- Deform mode --------
+
+void ACoopAdventureCharacter::SetTouchingCar(ACar* InCar)
+{
+	TouchingCar = InCar;
+}
+
+void ACoopAdventureCharacter::ClearTouchingCar(ACar* InCar)
+{
+	if (TouchingCar != InCar)
+	{
+		return;
+	}
+
+	TouchingCar = nullptr;
+
+	// Deliberately NOT touching bIsDeforming here - once Deform Mode is on,
+	// control stays frozen even if the spreader drifts out of the door
+	// collision. Only an explicit Y press (Server_ToggleDeformMode) turns
+	// it back off.
+}
+
+void ACoopAdventureCharacter::Server_ToggleDeformMode_Implementation()
+{
+	if (bIsDeforming)
+	{
+		bIsDeforming = false;
+
+		// Give movement back.
+		if (UCharacterMovementComponent* MoveComp = GetCharacterMovement())
+		{
+			MoveComp->SetMovementMode(MOVE_Walking);
+		}
+
+		UpdateCameraForDeformMode();
+		return;
+	}
+
+	// Only reachable while the spreader is actually on a door. In practice
+	// this also means only the host, since clients can't ever pick up the
+	// Spreader (see ASpreader::PickpSprader).
+	if (!bSpreaderPicked || !TouchingCar)
+	{
+		Client_NotifyActionRejected(TEXT("Line up the spreader on the door first."));
+		return;
+	}
+
+	bIsDeforming = true;
+
+	// Actually stop the character in place - just refusing new input
+	// (DoMove/DoJumpStart/etc.) isn't enough on its own since residual
+	// velocity keeps carrying the character forward. Disabling movement
+	// zeroes that out and stops it from responding to anything (including
+	// external forces) until we restore MOVE_Walking above.
+	if (UCharacterMovementComponent* MoveComp = GetCharacterMovement())
+	{
+		MoveComp->StopMovementImmediately();
+		MoveComp->DisableMovement();
+	}
+
+	UpdateCameraForDeformMode();
+}
+
+void ACoopAdventureCharacter::UpdateCameraForDeformMode()
+{
+	// This is a purely local viewpoint switch - only the locally-controlled
+	// host ever needs their own camera to change. Everyone else just sees
+	// the host's third-person body from the outside either way.
+	if (!IsLocallyControlled() || !FollowCamera || !FirstPersonCamera)
+	{
+		return;
+	}
+
+	FollowCamera->SetActive(!bIsDeforming);
+	FirstPersonCamera->SetActive(bIsDeforming);
+}
+
+void ACoopAdventureCharacter::Client_NotifyActionRejected_Implementation(const FString& Reason)
+{
+	if (GEngine)
+	{
+		GEngine->AddOnScreenDebugMessage(9004, 2.f, FColor::Orange, Reason);
+	}
+}
+
 void ACoopAdventureCharacter::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
 {
 	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
 
 	DOREPLIFETIME(ACoopAdventureCharacter, bSpreaderPicked);
 	DOREPLIFETIME(ACoopAdventureCharacter, PickedSpreaderMeshAsset);
+	DOREPLIFETIME(ACoopAdventureCharacter, bIsDeforming);
 }
 
 // -------- NPC commands --------

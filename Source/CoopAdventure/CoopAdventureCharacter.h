@@ -14,6 +14,7 @@ class UInputAction;
 struct FInputActionValue;
 class ASpreader;
 class USkeletalMesh;
+class ACar;
 
 DECLARE_LOG_CATEGORY_EXTERN(LogTemplateCharacter, Log, All);
 
@@ -44,6 +45,14 @@ class ACoopAdventureCharacter : public ACharacter
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Components", meta = (AllowPrivateAccess = "true"))
 	class USphereComponent* ArmTopCollision;
+
+	/** First-person camera, attached to the head socket. Inactive until Deform Mode starts - only the host ever switches to it (see Server_ToggleDeformMode). */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Components", meta = (AllowPrivateAccess = "true"))
+	UCameraComponent* FirstPersonCamera;
+
+	/** Bone/socket on the character mesh FirstPersonCamera attaches to. Defaults to "head" - change this to match your skeleton if needed. */
+	UPROPERTY(EditAnywhere, Category="Camera")
+	FName HeadSocketName = TEXT("head");
 	
 protected:
 
@@ -70,6 +79,10 @@ protected:
 	UPROPERTY(EditAnywhere, Category="Input")
 	UInputAction* VoiceActivateAction;
 
+	/** Toggles Deform Mode while touching a car door with the spreader. Bind this to the "Y" key in the Input Action asset. */
+	UPROPERTY(EditAnywhere, Category="Input")
+	UInputAction* DeformActivateAction;
+
 public:
 
 	/** Constructor */
@@ -93,6 +106,9 @@ protected:
 
 	/** V released: stop listening and process whatever was heard */
 	void OnVoiceActivateCompleted(const FInputActionValue& Value);
+
+	/** Y pressed: toggle Deform Mode (only takes effect while touching a car door with the spreader equipped) */
+	void OnDeformActivateStarted(const FInputActionValue& Value);
 
 public:
 	
@@ -150,6 +166,14 @@ public:
 
 	/** True if this character belongs to the host (listen server) rather than a remote client. A listen server's own PlayerController has no NetConnection (it's local); every remote client's does - that's what's checked here. Used to gate both NPC commands and Spreader pickup to the host only. */
 	bool IsHostPlayer() const;
+
+	/** True while Deform Mode is active. Replicated - walking, jumping, and voice command are all suppressed while this is set (see DoMove/DoJumpStart/DoJumpEnd/OnVoiceActivateStarted). Only reachable while touching a car door with the spreader equipped, which in practice restricts it to the host (only the host can ever pick up the spreader). */
+	UPROPERTY(Replicated, BlueprintReadOnly, Category = "Deformation")
+	bool bIsDeforming = false;
+
+	/** Called by ACar when this character's spreader-arm colliders enter/leave its door collision (server-only). Not meant to be called from anywhere else. Note: leaving the collision does NOT exit Deform Mode by itself - only Server_ToggleDeformMode (the Y key) does that, so control stays frozen until you explicitly toggle it off. */
+	void SetTouchingCar(ACar* InCar);
+	void ClearTouchingCar(ACar* InCar);
 
 protected:
 
@@ -210,6 +234,32 @@ protected:
 	UFUNCTION(Server, Reliable)
 	void Server_PickUpSpreader(ASpreader* TargetSpreader);
 
+	// -------- Deform mode (internals) --------
+
+	// The car this character's spreader-arm colliders are currently inside
+	// the door collision of, if any. Set/cleared by ACar - server-only
+	// bookkeeping, never replicated (only the server's own overlap matters).
+	UPROPERTY()
+	ACar* TouchingCar = nullptr;
+
+	// Server-side: flips bIsDeforming on/off. Only succeeds while
+	// TouchingCar is set (i.e. the spreader is actually on a door) -
+	// otherwise the request is rejected and the requesting client is told why.
+	UFUNCTION(Server, Reliable)
+	void Server_ToggleDeformMode();
+
+	// Generic "your request didn't go through" notice, shown only to the
+	// client that made the request.
+	UFUNCTION(Client, Reliable)
+	void Client_NotifyActionRejected(const FString& Reason);
+
+	// Locally-controlled-only: swaps between FollowCamera and
+	// FirstPersonCamera based on the current value of bIsDeforming. Called
+	// right after bIsDeforming changes in Server_ToggleDeformMode - for a
+	// listen server host this affects their view immediately, since their
+	// own Character actor IS the authoritative one running this code.
+	void UpdateCameraForDeformMode();
+
 	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
 
 public:
@@ -219,4 +269,10 @@ public:
 
 	/** Returns FollowCamera subobject **/
 	FORCEINLINE class UCameraComponent* GetFollowCamera() const { return FollowCamera; }
+
+	/** Returns the held Spreader's bottom-arm collision subobject **/
+	FORCEINLINE class USphereComponent* GetArmBottomCollision() const { return ArmBottomCollision; }
+
+	/** Returns the held Spreader's top-arm collision subobject **/
+	FORCEINLINE class USphereComponent* GetArmTopCollision() const { return ArmTopCollision; }
 };
